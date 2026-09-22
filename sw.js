@@ -1,7 +1,7 @@
 /* Balance Personal — service worker
    Guarda la app en el teléfono para que abra sin internet.
    VERSION la reemplaza el script de armado en cada publicación. */
-const VERSION = "bp-20260922-175307";
+const VERSION = "bp-20260922-175852";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable.png"];
 
 self.addEventListener("install", e => {
