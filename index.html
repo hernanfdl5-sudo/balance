@@ -327,7 +327,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260922-173106 -->
+<!-- build 20260922-174420 -->
 
 <div id="shell">
   <header id="topbar">
@@ -690,7 +690,8 @@ const INV_RE=/\b(ahorre|ahorramos|inverti|inversion|guarde|plazo fijo|compre dol
 function parseMonedaAR(txt){
   const s=String(txt).replace(/[^\d.,]/g,"").trim(); if(!s) return null;
   let t;
-  if(s.includes(",")) t=s.replace(/\./g,"").replace(",",".");
+  if(/^\d{1,3}(,\d{3})+$/.test(s)) t=s.replace(/,/g,"");
+  else if(s.includes(",")) t=s.replace(/\./g,"").replace(",",".");
   else if(/^\d{1,3}(\.\d{3})+$/.test(s)) t=s.replace(/\./g,"");
   else t=s;
   const n=parseFloat(t); return isFinite(n)?n:null;
@@ -698,6 +699,8 @@ function parseMonedaAR(txt){
 function aNumero(t){
   let s=String(t).replace(/[$\s]/g,""); if(!s) return null;
   if(/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,"");
+  /* "779,000" (el dictado a veces separa miles con coma) → 779000 */
+  if(/^\d{1,3}(,\d{3})+$/.test(s)) s=s.replace(/,/g,"");
   s=s.replace(/,/g,".");
   if(!/^\d+(\.\d+)?$/.test(s)) return null;
   const n=parseFloat(s); return isFinite(n)?n:null;
@@ -1960,34 +1963,53 @@ const App={
   /* ------------------------------------------------------------------- voz */
   conectarVoz(){
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
-    /* escucha continua: no corta en la primera pausa; termina al tocar el botón
-       o tras 5 segundos de silencio */
+    /* Escucha hasta que toques el botón o pasen 5 s sin hablar. Android corta solo
+       en cada pausa, así que si no fuiste vos quien frenó, se vuelve a arrancar y
+       lo dicho se va acumulando. */
     const r=new SR(); r.lang="es-AR"; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
-    let final="";
-    const silencio=(ms)=>{ clearTimeout(this._tSilencio); this._tSilencio=setTimeout(()=>{ try{r.stop();}catch(e){} },ms); };
-    r.onstart=()=>{final="";this.escuchando=true;this.render();silencio(8000);};
+    let sesion="", acumulado="", errorFatal=false;
+    const pintar=(interim)=>{
+      const ta=$("#txtEntrada");
+      if(ta){ ta.value=[acumulado,sesion,interim].join(" ").replace(/\s+/g," ").trim(); if(this._syncComposer) this._syncComposer(); }
+    };
+    const silencio=(ms)=>{
+      clearTimeout(this._tSilencio);
+      this._tSilencio=setTimeout(()=>{ this.quiereEscuchar=false; try{r.stop();}catch(e){} },ms);
+    };
+    r.onstart=()=>{ sesion=""; errorFatal=false; if(!this.escuchando){ this.escuchando=true; this.render(); } silencio(8000); };
     r.onresult=e=>{
-      /* se reconstruye todo cada vez (Android repite tramos ya finales) */
-      let f="",interim="";
+      /* Android reenvía la misma frase mientras la refina ("779", "779,000", "779,000"):
+         un resultado que empieza igual que el anterior lo reemplaza, no se suma */
+      const partes=[]; let interim="";
       for(let i=0;i<e.results.length;i++){
-        const t=e.results[i][0].transcript;
-        if(e.results[i].isFinal) f+=(f&&!f.endsWith(" ")?" ":"")+t.trim(); else interim+=" "+t;
+        const t=e.results[i][0].transcript.trim(); if(!t) continue;
+        if(!e.results[i].isFinal){ interim+=" "+t; continue; }
+        const prev=partes[partes.length-1];
+        const a=norm(t), b=prev?norm(prev):null;
+        if(b&&(a.startsWith(b)||b.startsWith(a))) partes[partes.length-1]=(a.length>=b.length?t:prev);
+        else if(b!==a) partes.push(t);
       }
-      final=f;
-      const ta=$("#txtEntrada"); if(ta){ ta.value=(final+interim).replace(/\s+/g," ").trim(); if(this._syncComposer) this._syncComposer(); }
-      silencio(5000);
+      sesion=partes.join(" ");
+      pintar(interim); silencio(5000);
     };
     r.onerror=ev=>{
-      this.escuchando=false; this.render();
+      if(ev.error==="no-speech"||ev.error==="aborted") return; /* lo resuelve onend */
+      errorFatal=true; this.quiereEscuchar=false;
       if(ev.error==="not-allowed") this.toast("Hay que darle permiso al micrófono desde el navegador.");
-      else if(ev.error==="no-speech") this.toast("No se escuchó nada. Probá de nuevo.");
       else this.toast("El dictado falló. Escribilo o probá otra vez.");
     };
     r.onend=()=>{
+      acumulado=[acumulado,sesion].join(" ").trim(); sesion="";
+      if(this.quiereEscuchar&&!errorFatal){
+        /* Android cortó por una pausa: seguimos escuchando */
+        setTimeout(()=>{ if(this.quiereEscuchar){ try{ r.start(); }catch(e){ this.quiereEscuchar=false; r.onend(); } } },120);
+        return;
+      }
       clearTimeout(this._tSilencio);
       this.escuchando=false;
-      const ta=$("#txtEntrada"), t=(ta?ta.value:final).trim();
-      this.render(); if(t) this.procesar(t);
+      const t=acumulado; acumulado="";
+      this.render();
+      if(t) this.procesar(t); else if(!errorFatal) this.toast("No se escuchó nada. Probá de nuevo.");
     };
     this.rec=r;
   },
@@ -1995,9 +2017,9 @@ const App={
   alternarVoz(){
     if(!this.rec) this.conectarVoz();
     if(!this.rec) return this.toast("Este navegador no tiene dictado. Usá el microfonito del teclado.");
-    if(this.escuchando){ try{this.rec.stop();}catch(e){} return; }
-    this.borradores=[]; this.ultimoTexto="";
-    try{ this.rec.start(); }catch(e){ this.toast("No se pudo abrir el micrófono."); }
+    if(this.escuchando){ this.quiereEscuchar=false; clearTimeout(this._tSilencio); try{this.rec.stop();}catch(e){} return; }
+    this.borradores=[]; this.ultimoTexto=""; this.quiereEscuchar=true;
+    try{ this.rec.start(); }catch(e){ this.quiereEscuchar=false; this.toast("No se pudo abrir el micrófono."); }
   },
 
   procesar(texto){
