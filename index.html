@@ -329,7 +329,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260922-174713 -->
+<!-- build 20260922-175307 -->
 
 <div id="shell">
   <header id="topbar">
@@ -407,7 +407,8 @@ const SINONIMOS={
     "delivery","pedidosya","rappi","cafe","cafeteria","heladeria","helado","pizza","hamburguesa","joda","previa",
     "recital","cumple","regalo","almuerzo","cena","merienda","salimos","after","tragos","fernet"],
   auto:["patente","seguro","nafta","combustible","gasoil","ypf","shell","axion","peaje","cochera","estacionamiento",
-    "vtv","mecanico","gomeria","lavadero","service","cubiertas","bateria","grua","auto","cuota del auto","prenda"],
+    "vtv","mecanico","gomeria","lavadero","service","cubiertas","bateria","grua","auto","cuota del auto","prenda",
+    "uber","cabify","didi","taxi","remis","colectivo","bondi","sube","subte","tren","micro","pasaje"],
   tarjetas:["mercado libre","mercadolibre","meli","mastercard","master","visa","tarjeta","tarjetas","resumen",
     "resumen tarjeta","amex","american express","naranja","cabal"],
   otros:["otros","varios","imprevisto","regalos","donacion","banco","comision","farmacia","remedios","medico",
@@ -684,7 +685,12 @@ const MULT={mil:1000,miles:1000,luca:1000,lucas:1000,lucaso:1000,k:1000,gamba:10
 const STOP=new Set(["de","en","para","por","del","la","el","los","las","un","una","unos","unas","al","gaste",
   "gastamos","gasto","pague","pagamos","compre","compramos","puse","me","se","fue","fui","que","y","con","sobre",
   "a","lo","le","mi","tipo","como","tambien","ademas","pesos","peso","mangos","guita","plata","total","aprox",
-  "aproximadamente","mas","o","menos","salio","costo","valio","hoy","ayer","este","esta"]);
+  "aproximadamente","mas","o","menos","salio","costo","valio","hoy","ayer","este","esta","cobre","cobramos",
+  "pagaron","recibi","vendi","deposite","meti","saque","guarde","ahorre","inverti","pusimos","despues","luego"]);
+
+const VERBOS_ARRANQUE=new Set(["gaste","gastamos","pague","pagamos","compre","compramos","puse","pusimos","guarde",
+  "ahorre","ahorramos","inverti","invertimos","cobre","cobramos","entro","entraron","vendi","deposite","meti","recibi",
+  "saque","pagaron","gasto","pago","compra","despues","luego","tambien","ademas"]);
 
 const ING_RE=/\b(cobre|cobramos|ingreso|ingresaron|sueldo|aguinaldo|ganancias|ganancia|me pagaron|pagaron|entro|entraron|factura|honorarios|vendi|vendimos|deposito|depositaron|bono|freelance|changa)\b/;
 const INV_RE=/\b(ahorre|ahorramos|inverti|inversion|guarde|plazo fijo|compre dolares|compre dolar|dolares|usd|cripto|bitcoin|usdt|cedear|cedears|acciones|fci|fondo comun|mep)\b/;
@@ -742,8 +748,10 @@ function buscarDestino(concepto){
       const ns=norm(s);
       if(ws.includes(ns)||(ns.length>=5&&n.includes(ns))) return {cat:c.id,sub:s};
     }
+  // 2b) un alias de subcategoría ("mercado pago" → Tarjetas › Mercado Libre)
+  for(const c of store.config.cats){ const s=subPorAlias(c.id,n); if(s) return {cat:c.id,sub:s}; }
   // 3) el nombre de una categoría
-  for(const c of store.config.cats) if(n===norm(c.nombre)||ws.includes(norm(c.nombre))) return {cat:c.id,sub:null};
+  for(const c of store.config.cats) if(n===norm(c.nombre)||ws.includes(norm(c.nombre))) return {cat:c.id,sub:subPorAlias(c.id,n)};
   // 4) diccionario de sinónimos y palabras aprendidas
   //    (solo vale si la categoría a la que apunta todavía existe)
   const d=store.config.dicc||{};
@@ -758,11 +766,26 @@ function buscarDestino(concepto){
   for(const k in d) if(k.length>=5&&n.includes(k)&&(r=via(k))) return r;
   return {cat:null,sub:null};
 }
+/* otras formas de nombrar una subcategoría; sólo valen si esa subcategoría existe */
+const ALIAS_SUB={"mercado pago":"Mercado Libre","mercadopago":"Mercado Libre","mercadolibre":"Mercado Libre","meli":"Mercado Libre",
+  "master":"Mastercard","super":"Súper","supermercado":"Súper","chino":"Súper","verduleria":"Verdura","fruta":"Verdura",
+  "carniceria":"Carne","pescaderia":"Pescado","gym":"Gimnasio","luz":"Edesur","electricidad":"Edesur","metrogas":"Gas",
+  "natatorio":"Natación","pileta":"Natación","expensa":"Expensas","seguro del auto":"Seguro","cuota del auto":"Cuota"};
+function subPorAlias(catId,texto){
+  const c=store.cat(catId); if(!c||!c.subs) return null;
+  const n=norm(texto);
+  for(const k in ALIAS_SUB){
+    if(n===k||n.split(" ").includes(k)||(k.length>=5&&n.includes(k))){
+      const s=c.subs.find(x=>norm(x)===norm(ALIAS_SUB[k])); if(s) return s;
+    }
+  }
+  return null;
+}
 function subCanonica(catId,palabra){
   const c=store.cat(catId); if(!c) return null;
   const n=norm(palabra);
   for(const s of (c.subs||[])) if(norm(s)===n||n.includes(norm(s))) return s;
-  return null;
+  return subPorAlias(catId,palabra);
 }
 
 /** Interpreta una frase y devuelve borradores editables. */
@@ -779,57 +802,72 @@ function interpretar(frase){
   const segs=prot.split(/\s*[,;]\s*|\s+y\s+|\s+mas\s+|\s+ademas\s+/)
     .map(s=>s.replace(/\u0001/g,",").replace(/\u0002/g," y ").trim()).filter(Boolean);
 
-  let multHeredado=null; const out=[];
-
-  /* si algún tramo trae su propia marca ("cobré", "puse en plazo fijo"), los tramos
-     sin marca son gastos; la marca global sólo manda cuando ningún tramo tiene la suya */
+  let multHeredado=null; const out=[], pend=[];
   const marcaDe=s=>INV_RE.test(s)?"inv":(ING_RE.test(s)?"ing":null);
-  const tieneMonto=s=>s.split(/\s+/).flatMap(romper).some(t=>t!=="y"&&esTokenNumerico(t));
-  const conMonto=segs.filter(tieneMonto);
-  const algunoMarcado=conMonto.length>1&&conMonto.some(s=>marcaDe(s));
-  const tipoSinMarca=algunoMarcado?"gasto":tipoGlobal;
 
   for(const seg of segs){
     const toks=seg.split(/\s+/).flatMap(romper).filter(Boolean);
-    let ini=-1,fin=-1;
-    for(let i=0;i<toks.length;i++){
+
+    /* todos los bloques numéricos del tramo: dictado de corrido sin "y" ni comas
+       ("259.970 de visa 46.566 de mastercard 327.018 de mercado pago") */
+    const bloques=[];
+    for(let i=0;i<toks.length;){
       if(esTokenNumerico(toks[i])&&toks[i]!=="y"){
-        ini=i; let j=i;
+        let j=i;
         while(j+1<toks.length&&esTokenNumerico(toks[j+1])){
           if(toks[j+1]==="y"&&!(j+2<toks.length&&esTokenNumerico(toks[j+2])&&toks[j+2]!=="y")) break;
           j++;
         }
-        fin=j; break;
-      }
+        bloques.push([i,j]); i=j+1;
+      } else i++;
     }
-    if(ini<0) continue;
+    if(!bloques.length) continue;
 
-    const numToks=toks.slice(ini,fin+1);
-    let monto=evaluarNumero(numToks);
-    if(monto===null||monto<=0) continue;
+    /* cada monto se lleva las palabras que le siguen hasta el próximo monto; el primero
+       se lleva además las que estaban antes ("gasté", "carne 50 lucas"). Los verbos que
+       abren un ítem ("cobré", "puse", "gasté") van con el monto que les sigue, no con el anterior. */
+    const regiones=bloques.map(([ini,fin],b)=>toks.slice(fin+1, b+1<bloques.length?bloques[b+1][0]:toks.length));
+    regiones[0]=toks.slice(0,bloques[0][0]).concat(regiones[0]);
+    for(let b=0;b+1<bloques.length;b++){
+      const r=regiones[b], carry=[];
+      while(r.length&&(VERBOS_ARRANQUE.has(r[r.length-1])||(r[r.length-1]==="me"&&carry.length))) carry.unshift(r.pop());
+      if(carry.length) regiones[b+1]=carry.concat(regiones[b+1]);
+    }
 
-    const mult=numToks.map(t=>MULT[t]).filter(Boolean).sort((a,b)=>b-a)[0]||null;
-    if(mult&&mult>=1000) multHeredado=mult;
-    else if(multHeredado&&monto<1000) monto=monto*multHeredado;
+    for(let b=0;b<bloques.length;b++){
+      const [ini,fin]=bloques[b];
+      const numToks=toks.slice(ini,fin+1);
+      let monto=evaluarNumero(numToks);
+      if(monto===null||monto<=0) continue;
 
-    const resto=toks.slice(0,ini).concat(toks.slice(fin+1))
-      .map(t=>t.replace(/[.,$]/g,"")).filter(t=>t&&!STOP.has(t)&&!/^\d+$/.test(t));
-    let concepto=resto.join(" ").trim();
+      const mult=numToks.map(t=>MULT[t]).filter(Boolean).sort((a,b)=>b-a)[0]||null;
+      if(mult&&mult>=1000) multHeredado=mult;
+      else if(multHeredado&&monto<1000) monto=monto*multHeredado;
 
-    const tipo=marcaDe(seg)||tipoSinMarca;
-    const item={id:uid(),tipo,monto,concepto:titulizar(concepto),cat:null,fuente:null,instrumento:null,
+      const region=regiones[b];
+      const regionTxt=region.join(" ");
+      const resto=region.map(t=>t.replace(/[.,$]/g,"")).filter(t=>t&&!STOP.has(t)&&!/^\d+$/.test(t));
+      pend.push({monto,concepto:resto.join(" ").trim(),regionTxt,marca:marcaDe(regionTxt)});
+    }
+  }
+
+  /* tipo de cada ítem: su propia marca ("cobré", "puse en plazo fijo"); si no tiene y algún
+     otro ítem sí, es gasto; si ninguno tiene, manda la marca global de la frase */
+  const algunoMarcado=pend.length>1&&pend.some(p=>p.marca);
+  for(const p of pend){
+    const tipo=p.marca||(algunoMarcado?"gasto":tipoGlobal);
+    const item={id:uid(),tipo,monto:p.monto,concepto:titulizar(p.concepto),cat:null,fuente:null,instrumento:null,
       dudoso:false,recordar:false};
-
     if(tipo==="gasto"){
-      const d=buscarDestino(concepto);
+      const d=buscarDestino(p.concepto);
       if(d.cat){ item.cat=d.cat; if(d.sub) item.concepto=d.sub; }
       else { item.cat=(store.config.cats[store.config.cats.length-1]||{id:"otros"}).id; item.dudoso=true; item.recordar=true; }
       if(!item.concepto) item.concepto="Sin detalle";
     }else if(tipo==="ing"){
-      item.fuente=buscarFuente(seg)||store.config.fuentes[0]||"Sueldo";
+      item.fuente=buscarFuente(p.regionTxt)||(pend.length===1?buscarFuente(plano):null)||store.config.fuentes[0]||"Sueldo";
       if(!item.concepto) item.concepto=item.fuente;
     }else{
-      item.instrumento=buscarInstrumento(seg)||"";
+      item.instrumento=buscarInstrumento(p.regionTxt)||(pend.length===1?buscarInstrumento(plano):null)||"";
       if(!item.concepto) item.concepto="";
     }
     out.push(item);
