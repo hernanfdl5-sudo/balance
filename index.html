@@ -120,7 +120,8 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 
 .segs{display:flex;gap:3px;background:var(--surface-3);padding:3px;border-radius:15px}
 .segs button{flex:1;padding:9px 6px;border-radius:12px;font-weight:600;font-size:14px;color:var(--ink-3);transition:background .15s,color .15s}
-.segs button[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.segs button[aria-selected=true]{background:var(--brand);color:var(--on-brand);box-shadow:var(--shadow)}
+.segs button[aria-selected=true] small{color:var(--on-brand);opacity:.8}
 .segs button small{font-size:10.5px;font-weight:700;color:var(--ink-3);margin-left:2px;vertical-align:1px}
 .segs.mini button{padding:7px 6px;font-size:12.5px;border-radius:10px}
 
@@ -262,8 +263,8 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
   background:color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);
   padding:7px 8px calc(7px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:2px}
-#tabs .t{flex:1;max-width:150px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 4px;
-  border-radius:12px;color:var(--ink-3);font-size:10.5px;font-weight:600;transition:color .15s,background .15s}
+#tabs .t{flex:1;max-width:120px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px;
+  border-radius:12px;color:var(--ink-3);font-size:10px;font-weight:600;transition:color .15s,background .15s;white-space:nowrap;overflow:hidden}
 #tabs .t svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #tabs .t[aria-selected=true]{color:var(--brand-ink);background:var(--brand-soft)}
 
@@ -326,7 +327,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260922-171944 -->
+<!-- build 20260922-173106 -->
 
 <div id="shell">
   <header id="topbar">
@@ -766,7 +767,9 @@ function interpretar(frase){
   const tipoGlobal=INV_RE.test(plano)?"inv":(ING_RE.test(plano)?"ing":"gasto");
 
   const NUMW=Object.keys(UNIDADES).join("|");
-  const prot=base.replace(/(\d),(\d)/g,"$1\u0001$2")
+  /* el dictado de Android escribe "738 000" o "1 500 000" con espacios: se unen */
+  const unido=base.replace(/\b(\d{1,3})((?: \d{3}){2,}|(?: 000)+)\b/g,(m,a,b)=>a+b.replace(/ /g,""));
+  const prot=unido.replace(/(\d),(\d)/g,"$1\u0001$2")
     .replace(new RegExp("\\b("+NUMW+")\\s+y\\s+(?="+NUMW+"\\b)","g"),"$1\u0002");
   const segs=prot.split(/\s*[,;]\s*|\s+y\s+|\s+mas\s+|\s+ademas\s+/)
     .map(s=>s.replace(/\u0001/g,",").replace(/\u0002/g," y ").trim()).filter(Boolean);
@@ -979,11 +982,12 @@ const App={
   pintarTabs(){
     const ICON={
       cargar:'<path d="M12 5v14M5 12h14"/>',
+      movs:'<path d="M4 6h16M4 12h16M4 18h10"/>',
       resumen:'<path d="M4 19V9M10 19V5M16 19v-7M4 19h16"/>',
       ahorro:'<path d="M12 3v18M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.7 5 3.2 5 1.3 5 3.3-2.2 3-5 3-5-1.1-5-3"/>',
       ajustes:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'
     };
-    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",ajustes:"Ajustes"};
+    const L={cargar:"Cargar",movs:"Movimientos",resumen:"Resumen",ahorro:"Ahorro",ajustes:"Ajustes"};
     $("#tabs").innerHTML=Object.keys(L).map(k=>
       `<button class="t" role="tab" data-tab="${k}" aria-selected="${k===this.tab}">
         <svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${L[k]}</button>`).join("");
@@ -1181,6 +1185,7 @@ const App={
     const scrollY=window.scrollY;
 
     v.innerHTML = this.tab==="cargar"?this.vistaCargar()
+      : this.tab==="movs"?this.bloqueMovimientos()
       : this.tab==="resumen"?this.vistaResumen()
       : this.tab==="ahorro"?this.vistaAhorro()
       : this.vistaAjustes();
@@ -1281,7 +1286,7 @@ const App={
         <button class="btn pri" id="saveDraft">Guardar ${b.length} movimiento${b.length===1?"":"s"}</button>
       </div></section>`;
     }
-    return h+this.bloqueMovimientos();
+    return h;
   },
 
   filaBorrador(d,i){
@@ -1673,23 +1678,23 @@ const App={
           y la categoría es la suma.</p>
         ${c.cats.map(cat=>{
           const tiene=cat.subs&&cat.subs.length;
+          /* lo tipeado y todavía no guardado se conserva en memoria (presupDraft) */
+          const dr=this.presupDraft||{};
+          const val=(k,guardado)=> dr[k]!==undefined ? dr[k] : (guardado?money(guardado):"");
           if(!tiene) return `<div class="pgrupo">
             <div class="psub"><span><i class="dot" style="background:${colorDe(cat.color)}"></i>
               <b style="font-weight:600;margin-left:7px">${esc(cat.nombre)}</b></span>
               <input type="text" class="num" data-presup-cat="${esc(cat.id)}" inputmode="numeric"
-                value="${(m.presupuestos&&m.presupuestos[cat.id])?money(m.presupuestos[cat.id]):""}"
+                value="${esc(val("c|"+cat.id,(m.presupuestos||{})[cat.id]))}"
                 placeholder="Sin tope" aria-label="Tope de ${esc(cat.nombre)}"></div></div>`;
           const t=calc.topeCat(m,cat);
           return `<div class="pgrupo" data-grupo="${esc(cat.id)}">
             <div class="phead"><b><i class="dot" style="background:${colorDe(cat.color)}"></i>${esc(cat.nombre)}</b>
               <span class="tt"><small>Total</small><span class="num" data-total="${esc(cat.id)}">${money(t.monto)}</span></span></div>
-            ${cat.subs.map(s=>{
-              const v=calc.topeSub(m,cat.id,s);
-              return `<div class="psub"><span>${esc(s)}</span>
+            ${cat.subs.map(s=>`<div class="psub"><span>${esc(s)}</span>
                 <input type="text" class="num" data-presup-sub="${esc(cat.id)}" data-sub="${esc(s)}"
-                  inputmode="numeric" value="${v?money(v):""}" placeholder="Sin tope"
-                  aria-label="Tope de ${esc(s)}"></div>`;
-            }).join("")}
+                  inputmode="numeric" value="${esc(val("s|"+cat.id+"|"+s,calc.topeSub(m,cat.id,s)))}" placeholder="Sin tope"
+                  aria-label="Tope de ${esc(s)}"></div>`).join("")}
           </div>`;
         }).join("")}
         <button class="btn pri" id="guardarPresup">Guardar presupuestos</button>
@@ -1846,7 +1851,7 @@ const App={
     v.querySelectorAll("[data-fmov]").forEach(b=>b.onclick=()=>{this.filtroMov=b.dataset.fmov;this.render();});
     v.querySelectorAll("[data-vegr]").forEach(b=>b.onclick=()=>{this.vistaEgr=b.dataset.vegr;this.render();});
     v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>{
-      this.tab="ajustes"; this.pintarTabs(); this.render();
+      this.volverA=this.tab; this.tab="ajustes"; this.pintarTabs(); this.render();
       const d=$("#setPresup"); if(d){ d.open=true; d.scrollIntoView({behavior:"smooth",block:"start"}); }
     });
 
@@ -1861,17 +1866,24 @@ const App={
       catch(e){ this.toast(lock.explicar(e)); }
     };
 
-    /* el total de cada grupo se recalcula mientras escribís */
+    /* el total de cada grupo se recalcula mientras escribís; lo tipeado se guarda en memoria
+       hasta que toques Guardar, así ningún redibujado te lo borra */
+    this.presupDraft=this.presupDraft||{};
+    const formatear=inp=>{ const n=this.leerMonto(inp.value); if(n>0&&inp.value.trim()){ inp.value=money(n); } };
     v.querySelectorAll("[data-presup-sub]").forEach(inp=>{
+      const k="s|"+inp.dataset.presupSub+"|"+inp.dataset.sub;
       inp.addEventListener("input",()=>{
+        this.presupDraft[k]=inp.value;
         const cid=inp.dataset.presupSub; let t=0;
         v.querySelectorAll(`[data-presup-sub="${CSS.escape(cid)}"]`).forEach(x=>{ t+=this.leerMonto(x.value); });
         const out=v.querySelector(`[data-total="${CSS.escape(cid)}"]`); if(out) out.textContent=money(t);
       });
-      inp.addEventListener("change",()=>{ const n=this.leerMonto(inp.value); inp.value=n>0?money(n):""; });
+      inp.addEventListener("change",()=>{ formatear(inp); this.presupDraft[k]=inp.value; });
     });
     v.querySelectorAll("[data-presup-cat]").forEach(inp=>{
-      inp.addEventListener("change",()=>{ const n=this.leerMonto(inp.value); inp.value=n>0?money(n):""; });
+      const k="c|"+inp.dataset.presupCat;
+      inp.addEventListener("input",()=>{ this.presupDraft[k]=inp.value; });
+      inp.addEventListener("change",()=>{ formatear(inp); this.presupDraft[k]=inp.value; });
     });
 
     const gp=$("#guardarPresup"); if(gp) gp.onclick=()=>{
@@ -1889,7 +1901,13 @@ const App={
         /* si ahora hay topes por subcategoría, el tope suelto de la categoría sobra */
         if(n>0) delete m.presupuestos[cid];
       });
-      store.guardarMes(this.mes); this.toast("Presupuestos guardados.");
+      this.presupDraft={};
+      const det=$("#setPresup"); if(det) det.open=false;
+      if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();
+      store.guardarMes(this.mes);
+      /* si viniste desde el Resumen, volvés ahí con los topes ya aplicados */
+      if(this.volverA){ const t=this.volverA; this.volverA=null; this.tab=t; this.pintarTabs(); this.render(); window.scrollTo({top:0,behavior:"smooth"}); }
+      this.toast("Presupuestos guardados.");
     };
     const cp=$("#copiarPresup"); if(cp) cp.onclick=()=>{
       const prev=store.mes(keyMas(this.mes,-1));
@@ -1942,16 +1960,22 @@ const App={
   /* ------------------------------------------------------------------- voz */
   conectarVoz(){
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
-    const r=new SR(); r.lang="es-AR"; r.continuous=false; r.interimResults=true; r.maxAlternatives=1;
+    /* escucha continua: no corta en la primera pausa; termina al tocar el botón
+       o tras 5 segundos de silencio */
+    const r=new SR(); r.lang="es-AR"; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
     let final="";
-    r.onstart=()=>{final="";this.escuchando=true;this.render();};
+    const silencio=(ms)=>{ clearTimeout(this._tSilencio); this._tSilencio=setTimeout(()=>{ try{r.stop();}catch(e){} },ms); };
+    r.onstart=()=>{final="";this.escuchando=true;this.render();silencio(8000);};
     r.onresult=e=>{
-      let interim="";
-      for(let i=e.resultIndex;i<e.results.length;i++){
+      /* se reconstruye todo cada vez (Android repite tramos ya finales) */
+      let f="",interim="";
+      for(let i=0;i<e.results.length;i++){
         const t=e.results[i][0].transcript;
-        if(e.results[i].isFinal) final+=t; else interim+=t;
+        if(e.results[i].isFinal) f+=(f&&!f.endsWith(" ")?" ":"")+t.trim(); else interim+=" "+t;
       }
-      const ta=$("#txtEntrada"); if(ta){ ta.value=(final+interim).trim(); if(this._syncComposer) this._syncComposer(); }
+      final=f;
+      const ta=$("#txtEntrada"); if(ta){ ta.value=(final+interim).replace(/\s+/g," ").trim(); if(this._syncComposer) this._syncComposer(); }
+      silencio(5000);
     };
     r.onerror=ev=>{
       this.escuchando=false; this.render();
@@ -1960,6 +1984,7 @@ const App={
       else this.toast("El dictado falló. Escribilo o probá otra vez.");
     };
     r.onend=()=>{
+      clearTimeout(this._tSilencio);
       this.escuchando=false;
       const ta=$("#txtEntrada"), t=(ta?ta.value:final).trim();
       this.render(); if(t) this.procesar(t);
