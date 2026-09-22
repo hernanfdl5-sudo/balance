@@ -146,6 +146,14 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .dseg{cursor:pointer;transition:opacity .18s}
 .dseg:hover{opacity:.72}
 .dseg.off{opacity:.28}
+.dseg.sel{filter:brightness(1.08)}
+.slicebox{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:6px 10px;
+  margin:4px auto 0;max-width:340px;padding:10px 12px;border-radius:13px;background:var(--surface-2);border:1px solid var(--line);
+  font-size:13.5px;animation:aparece .18s ease-out}
+.slicebox .nm{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slicebox .v{font-weight:700}
+.slicebox .p{font-size:12px;color:var(--ink-2);background:var(--surface-3);padding:2px 7px;border-radius:999px}
+@keyframes aparece{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 .donutmid{position:absolute;inset:0;display:grid;place-content:center;text-align:center;pointer-events:none;padding:0 12%}
 .donutmid .k{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
 .donutmid .v{font-size:clamp(17px,5.2vw,22px);font-weight:700;letter-spacing:-.4px;line-height:1.15;margin-top:2px}
@@ -329,7 +337,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260922-175307 -->
+<!-- build 20260922-175852 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1253,12 +1261,13 @@ const App={
     if(!items.length||total<=0) return "";
     const R=54,W=24,C=2*Math.PI*R,GAP=items.length>1?2.5:0;
     let off=0;
-    const segs=items.map(it=>{
+    const segs=items.map((it,i)=>{
       const frac=it.monto/total, arc=frac*C, len=Math.max(arc-GAP,1.2);
       const s=`<circle class="dseg" cx="70" cy="70" r="${R}" fill="none" stroke="${it.color}" stroke-width="${W}"
         stroke-linecap="butt" stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}"
         stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)"
-        ${it.id?`data-slice="${esc(it.id)}"`:""} role="listitem"
+        data-slice="${i}" ${it.id?`data-slice-cat="${esc(it.id)}"`:""} data-nombre="${esc(it.nombre)}"
+        data-monto="${it.monto}" data-pct="${pct(frac*100)}" data-color="${esc(it.color)}" role="listitem" tabindex="0"
         ><title>${esc(it.nombre)}: ${money(it.monto)} · ${pct(frac*100)}</title></circle>`;
       off+=arc; return s;
     }).join("");
@@ -1271,7 +1280,29 @@ const App={
         <span class="k">${esc(centroK)}</span>
         <span class="v num">${esc(centroV)}</span>
         ${centroS?`<span class="s">${esc(centroS)}</span>`:""}
-      </div></div>`;
+      </div></div>
+      <div class="slicebox" hidden></div>`;
+  },
+
+  /* recuadro debajo de la torta con la porción tocada */
+  mostrarPorcion(seg){
+    const wrap=seg.closest(".donutwrap"); if(!wrap) return;
+    const box=wrap.nextElementSibling; if(!box||!box.classList.contains("slicebox")) return;
+    const yaSel=seg.classList.contains("sel");
+    wrap.querySelectorAll(".dseg").forEach(s=>s.classList.remove("sel","off"));
+    if(yaSel){ box.hidden=true; return; }
+    wrap.querySelectorAll(".dseg").forEach(s=>{ if(s!==seg) s.classList.add("off"); });
+    seg.classList.add("sel");
+    const cat=seg.dataset.sliceCat;
+    box.innerHTML=`<i class="dot" style="background:${seg.dataset.color}"></i>
+      <span class="nm">${esc(seg.dataset.nombre)}</span>
+      <span class="num v">${money(seg.dataset.monto)}</span>
+      <span class="num p">${esc(seg.dataset.pct)}</span>
+      ${cat?`<button type="button" class="btn out sm" data-cat="${esc(cat)}" style="grid-column:1/-1;justify-self:start">Ver desglose ›</button>`:""}`;
+    box.hidden=false;
+    const b=box.querySelector("[data-cat]");
+    if(b) b.onclick=()=>{ const id=b.dataset.cat; this.vistaEgr="detalle"; this.abiertas[id]=true; this.render();
+      const el=$("#view").querySelector(`[data-cat="${CSS.escape(id)}"]`); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); };
   },
 
   barrasVerticales(serie,keyActual,color){
@@ -1466,7 +1497,7 @@ const App={
         <div class="sechead"><h2 class="sec">En qué se fue</h2>
           <span class="eyebrow">${conGasto.length} categoría${conGasto.length===1?"":"s"}</span></div>
         ${this.donut(items,gas,"Gastado",money(gas),MESES[Number(key.split("-")[1])-1])}
-        <p class="hint" style="text-align:center;margin:2px 0 0">Tocá una porción para abrir el desglose.</p>
+        <p class="hint" style="text-align:center;margin:6px 0 0">Tocá una porción para ver cuánto es.</p>
       </section>`;
     }
 
@@ -1893,13 +1924,10 @@ const App={
       this.render();
       if(this.abiertas[id]){ const el=v.querySelector(`[data-cat="${CSS.escape(id)}"]`); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); }
     });
-    v.querySelectorAll("[data-slice]").forEach(s=>s.addEventListener("click",()=>{
-      const id=s.dataset.slice;
-      if(this.vistaEgr==="torta"){ this.vistaEgr="detalle"; this.abiertas[id]=true; } else this.abiertas[id]=!this.abiertas[id];
-      this.render();
-      const el=document.querySelector(`[data-cat="${CSS.escape(id)}"]`);
-      if(el) el.scrollIntoView({behavior:"smooth",block:"center"});
-    }));
+    v.querySelectorAll("[data-slice]").forEach(s=>{
+      s.addEventListener("click",()=>this.mostrarPorcion(s));
+      s.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); this.mostrarPorcion(s); } });
+    });
     v.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
       const[t,id]=b.dataset.edit.split(":"); this.editar(t,id);
     });
