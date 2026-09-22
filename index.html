@@ -124,6 +124,8 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .segs button[aria-selected=true] small{color:var(--on-brand);opacity:.8}
 .segs button small{font-size:10.5px;font-weight:700;color:var(--ink-3);margin-left:2px;vertical-align:1px}
 .segs.mini button{padding:7px 6px;font-size:12.5px;border-radius:10px}
+.hero .segs.mini{padding:2px;border-radius:11px}
+.hero .segs.mini button{padding:5px 10px;font-size:11.5px;border-radius:9px;flex:none}
 
 /* proyectado vs real */
 .dosdonuts{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;align-items:start}
@@ -327,7 +329,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260922-174420 -->
+<!-- build 20260922-174713 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1368,20 +1370,32 @@ const App={
 
   /* --------------------------------------------------------------- RESUMEN */
   vistaResumen(){
-    const key=this.mes;
-    const ing=calc.ingresos(key),gas=calc.gastado(key),inv=calc.invertido(key);
+    const key=this.mes, mesN=MESES[Number(key.split("-")[1])-1].toLowerCase();
+    const proy=this.heroModo==="proy";
+    const ing=calc.ingresos(key),inv=calc.invertido(key);
+    /* Real: lo que gastaste. Proyectado: los topes que pusiste (un mes normal) */
+    const gas=proy?calc.presupuesto(key):calc.gastado(key);
     const arr=calc.arrastre(key),neto=ing-gas-inv,final=neto+arr;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
+    const lbl=proy?(final>=0?"Te sobraría":"Te faltarían"):(final>=0?"Te sobró":"Estás en rojo por");
 
     let h=`<section class="hero" style="--hero-accent:${acc}">
-      <div class="lbl">${final>=0?"Te sobró":"Estás en rojo por"}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div class="lbl">${lbl}</div>
+        <div class="segs mini" role="tablist" style="flex:0 0 auto">
+          <button role="tab" data-hero="real" aria-selected="${!proy}">Real</button>
+          <button role="tab" data-hero="proy" aria-selected="${proy}">Proyectado</button>
+        </div>
+      </div>
       <div class="big num">${money(Math.abs(final))}</div>
-      <div class="sub">${store.config.arrastre&&arr!==0
-        ? `${money(neto)} de este mes ${arr>=0?"+":"−"} ${money(Math.abs(arr))} que venías arrastrando`
-        : `Ingresos menos gastos y ahorro de ${MESES[Number(key.split("-")[1])-1].toLowerCase()}`}</div>
+      <div class="sub">${proy
+        ? (gas>0?`Ingresos menos los topes de ${mesN} y el ahorro cargado`:`Todavía no pusiste topes en ${mesN}: falta la parte de gastos`)
+        : (store.config.arrastre&&arr!==0
+          ? `${money(neto)} de este mes ${arr>=0?"+":"−"} ${money(Math.abs(arr))} que venías arrastrando`
+          : `Ingresos menos gastos y ahorro de ${mesN}`)}</div>
       <div class="miniflow">
         <div><span class="k">Ingresos</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
-        <div><span class="k">Gastos</span><span class="v num">${money(gas)}</span></div>
+        <div><span class="k">${proy?"Gastos proyectados":"Gastos"}</span><span class="v num">${money(gas)}</span></div>
         <div><span class="k">Ahorro</span><span class="v num" style="color:var(--brand-ink)">${money(inv)}</span></div>
       </div></section>
 
@@ -1832,6 +1846,7 @@ const App={
     const cd=$("#cancelDraft"); if(cd) cd.onclick=()=>{this.borradores=[];this.ultimoTexto="";this.render();};
 
     v.querySelectorAll("[data-sub]").forEach(b=>b.onclick=()=>{this.sub=b.dataset.sub;this.render();});
+    v.querySelectorAll("[data-hero]").forEach(b=>b.onclick=()=>{this.heroModo=b.dataset.hero;this.render();});
     /* desde la vista de tortas, tocar una categoría lleva a su detalle abierto */
     v.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
       const id=b.dataset.cat;
