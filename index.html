@@ -337,6 +337,11 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
   background:color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:10px 16px}
 #composerBar .inner{max-width:600px;margin:0 auto}
+.atajos{display:flex;gap:6px;margin-bottom:8px;overflow-x:auto;scrollbar-width:none}
+.atajos::-webkit-scrollbar{display:none}
+.atajos button{flex:none;padding:6px 12px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface);
+  color:var(--ink-2);font-size:12.5px;font-weight:600}
+.atajos button:active{background:var(--surface-3)}
 
 /* ---------- pantalla de bloqueo ---------- */
 #lock{position:fixed;inset:0;z-index:100;background:var(--ground);display:flex;flex-direction:column;
@@ -359,7 +364,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260923-084912 -->
+<!-- build 20260923-090630 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1272,12 +1277,19 @@ const App={
     const bar=$("#composerBar"); if(bar.dataset.listo) return;
     const voz=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
     const icoSend=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg>`;
-    bar.innerHTML=`<div class="inner"><div class="composer">
+    bar.innerHTML=`<div class="inner">
+      <div class="atajos">
+        <button type="button" data-nuevo="gasto">+ Gasto</button>
+        <button type="button" data-nuevo="ing">+ Ingreso</button>
+        <button type="button" data-nuevo="inv">+ Ahorro</button>
+      </div>
+      <div class="composer">
         <textarea id="txtEntrada" rows="1" placeholder="50 lucas de carne, 20 de súper…" aria-label="Gasto a cargar"></textarea>
         <button type="button" class="cbtn" id="sendBtn" aria-label="Interpretar" hidden>${icoSend}</button>
         ${voz?`<button type="button" class="cbtn" id="micBtn" aria-label="Dictar"></button>`:""}
       </div></div>`;
     bar.dataset.listo="1";
+    bar.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null));
     const ta=$("#txtEntrada"), send=$("#sendBtn"), mic=$("#micBtn");
     const sync=()=>{
       const hay=ta.value.trim().length>0;
@@ -1454,15 +1466,7 @@ const App={
   /* ---------------------------------------------------------------- CARGAR */
   vistaCargar(){
     const b=this.borradores;
-    let h=`<section class="card" style="display:flex;flex-direction:column;gap:12px">
-      <div class="sechead" style="margin:0"><h2 class="sec">Cargar</h2>
-        <span class="eyebrow">${MESES[Number(this.mes.split("-")[1])-1]}</span></div>
-      <div class="row">
-        <button class="btn out sm" data-nuevo="gasto">+ Gasto</button>
-        <button class="btn out sm" data-nuevo="ing">+ Ingreso</button>
-        <button class="btn out sm" data-nuevo="inv">+ Ahorro</button>
-      </div></section>`;
-    h+=this.bannerRespaldo();
+    let h=this.bannerRespaldo();
     if(this.ultimoTexto) h+=`<div class="heard">“${esc(this.ultimoTexto)}”</div>`;
     if(!b.length&&!this.ultimoTexto)
       h+=`<div class="empty" style="padding-top:34px"><b>Dictá o escribí un gasto abajo</b>Por ejemplo: “50 lucas de carne, 20 de súper”.</div>`;
