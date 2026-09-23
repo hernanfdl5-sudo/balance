@@ -328,6 +328,15 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .alrow .r.crit{background:var(--crit-soft);color:var(--crit-ink)}
 .subedit{display:flex;gap:6px;align-items:center}
 .subedit input{flex:1}
+.proyline{display:flex;gap:24px;justify-content:center;margin-top:10px;text-align:center}
+.proyline .k{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+.proyline b{font-size:17px;font-weight:700}
+
+/* compositor fijo abajo, como un chat */
+#composerBar{position:fixed;left:0;right:0;z-index:35;
+  background:color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:10px 16px}
+#composerBar .inner{max-width:600px;margin:0 auto}
 
 /* ---------- pantalla de bloqueo ---------- */
 #lock{position:fixed;inset:0;z-index:100;background:var(--ground);display:flex;flex-direction:column;
@@ -350,7 +359,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260922-182934 -->
+<!-- build 20260923-084912 -->
 
 <div id="shell">
   <header id="topbar">
@@ -365,6 +374,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </div>
 
 <nav id="tabs" role="tablist"></nav>
+<div id="composerBar" hidden></div>
 <div id="lock" hidden></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <dialog id="sheet"><div class="sheet" id="sheetBody"></div></dialog>
@@ -398,6 +408,16 @@ function hoyISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMont
 function fechaCorta(iso){if(!iso)return"";const p=String(iso).split("-");return p.length<3?"":(Number(p[2])+" "+MESES_CORTO[Number(p[1])-1]);}
 function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALETA.length]+")";}
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
+
+/* estado de una barra frente a su tope — el mismo criterio en toda la app:
+   amarillo = todavía falta, verde = completo, rojo = pasado */
+function estadoTope(gastado,tope){ if(!(tope>0)) return "none"; const r=(Number(gastado)||0)/tope; return r<0.99?"warn":(r<=1.01?"ok":"crit"); }
+function colorEstado(est,neutro){ return est==="crit"?"var(--crit)":est==="warn"?"var(--warn)":est==="ok"?"var(--good)":neutro; }
+function textoEstado(est,gastado,tope,vFalta){
+  const p=tope>0?pct(gastado/tope*100):"";
+  return est==="crit"?`${p} · ${money(gastado-tope)} de más`:est==="ok"?`${p} · completo`
+    :est==="warn"?`${p} · ${vFalta||"faltan"} ${money(tope-gastado)}`:"Sin tope";
+}
 
 /* ============================ datos por defecto ============================ */
 
@@ -456,7 +476,7 @@ const CONFIG_DEF=()=>({
 });
 /* presupuestos: tope por categoría (para las que no tienen subcategorías)
    presupuestosSub: tope por subcategoría — su suma es el tope de la categoría */
-const MES_DEF=()=>({gastos:[],ingresos:[],inversiones:[],presupuestos:{},presupuestosSub:{},
+const MES_DEF=()=>({gastos:[],ingresos:[],inversiones:[],presupuestos:{},presupuestosSub:{},presupuestosIng:{},
   creado:new Date().toISOString()});
 
 /* ============================ almacenamiento ============================ */
@@ -573,6 +593,7 @@ const store={
       m.presupuestos={...(ult.presupuestos||{})};
       m.presupuestosSub={};
       for(const c in (ult.presupuestosSub||{})) m.presupuestosSub[c]={...ult.presupuestosSub[c]};
+      m.presupuestosIng={...(ult.presupuestosIng||{})};
     }
     let n=0;
     for(const f of (this.config.fijos||[])){
@@ -629,10 +650,18 @@ const calc={
         ? b.lista.filter(x=>x.tope>0).map(x=>({cat:c,nombre:x.nombre,tope:x.tope,gastado:x.monto}))
         : (b.presup>0?[{cat:c,nombre:null,tope:b.presup,gastado:b.gastado}]:[]);
       for(const f of filas){
+        const e=estadoTope(f.gastado,f.tope);
         if(f.gastado<=0) sinCargar.push(f);
-        else if(f.gastado<f.tope) conSaldo.push(f);
-        else pasados.push(f);
+        else if(e==="warn") conSaldo.push(f);
+        else if(e==="crit") pasados.push(f);
+        /* "completo" (dentro del 1 %) no es una alerta */
       }
+    }
+    /* ingresos esperados que todavía no entraron (o entraron de menos) */
+    for(const f of this.porFuente(key)){
+      if(!(f.esperado>0)) continue;
+      const fila={cat:{nombre:"Ingreso",color:0},ing:true,nombre:f.nombre,tope:f.esperado,gastado:f.monto};
+      if(f.monto<=0) sinCargar.push(fila); else if(f.monto<f.esperado*0.99) conSaldo.push(fila);
     }
     conSaldo.sort((a,b)=>(b.tope-b.gastado)-(a.tope-a.gastado));
     pasados.sort((a,b)=>(b.gastado-b.tope)-(a.gastado-a.tope));
@@ -695,15 +724,25 @@ const calc={
     return out;
   },
 
+  /* ingresos esperados por fuente (el "tope" de los ingresos) */
+  ingEsperadoDe(mes,f){ return Number(((mes||{}).presupuestosIng||{})[f])||0; },
+  ingEsperado(k){ const m=store.mes(k); if(!m) return 0; return Object.values(m.presupuestosIng||{}).reduce((s,v)=>s+(Number(v)||0),0); },
+  /* ingreso estimado: por fuente, lo mayor entre lo esperado y lo ya cobrado */
+  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+Math.max(f.esperado,f.monto),0); },
+
   porFuente(key){
     const m=store.mes(key); const acc={};
-    for(const f of store.config.fuentes) acc[f]=0;
+    for(const f of store.config.fuentes) acc[f]={nombre:f,monto:0,esperado:this.ingEsperadoDe(m,f),conceptos:{}};
     if(m) for(const i of m.ingresos){
       const f=(i.fuente||"Otros").trim();
-      acc[f]=(acc[f]||0)+(Number(i.monto)||0);
+      if(!acc[f]) acc[f]={nombre:f,monto:0,esperado:this.ingEsperadoDe(m,f),conceptos:{}};
+      const v=Number(i.monto)||0; acc[f].monto+=v;
+      const c=(i.concepto||f).trim(); acc[f].conceptos[c]=(acc[f].conceptos[c]||0)+v;
     }
-    return Object.entries(acc).map(([nombre,monto])=>({nombre,monto}))
-      .filter(x=>x.monto>0).sort((a,b)=>b.monto-a.monto);
+    return Object.values(acc)
+      .map(f=>({...f,lista:Object.entries(f.conceptos).map(([nombre,monto])=>({nombre,monto})).sort((a,b)=>b.monto-a.monto)}))
+      .filter(x=>x.monto>0||x.esperado>0)
+      .sort((a,b)=>(b.monto-a.monto)||(b.esperado-a.esperado));
   },
 
   ahorroAcumulado(){return Object.keys(store.meses).reduce((s,k)=>s+this.invertido(k),0);},
@@ -1083,7 +1122,7 @@ const App={
       ajustes:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'
     };
     ICON.alertas='<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/>';
-    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",movs:"Movimientos",alertas:"Alertas",ajustes:"Ajustes"};
+    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",alertas:"Alertas",ajustes:"Ajustes"};
     const pend=store.listos?calc.alertas(this.mes).sinCargar.length:0;
     $("#tabs").innerHTML=Object.keys(L).map(k=>
       `<button class="t" role="tab" data-tab="${k}" aria-selected="${k===this.tab}">
@@ -1127,7 +1166,7 @@ const App={
   bloquear(){
     this.bloqueado=true; this.pin=""; this.borradores=[];
     const dlg=$("#sheet"); if(dlg&&dlg.open) dlg.close();
-    $("#shell").setAttribute("aria-hidden","true"); $("#tabs").hidden=true;
+    $("#shell").setAttribute("aria-hidden","true"); $("#tabs").hidden=true; $("#composerBar").hidden=true;
     $("#view").innerHTML="";
     this.pintarLock();
     if(lock.tieneHuella()) setTimeout(()=>this.probarHuella(true),350);
@@ -1222,10 +1261,53 @@ const App={
     },null);
   },
 
-  /* ¿hay un campo de texto con el foco dentro de la vista? */
+  /* ¿hay un campo de texto con el foco dentro de la vista o del compositor? */
   editando(){
-    const a=document.activeElement, v=$("#view");
-    return !!(a&&v&&v.contains(a)&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")&&a.type!=="checkbox");
+    const a=document.activeElement, v=$("#view"), cb=$("#composerBar");
+    return !!(a&&((v&&v.contains(a))||(cb&&cb.contains(a)))&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")&&a.type!=="checkbox");
+  },
+
+  /* el compositor se construye una sola vez y sobrevive a los redibujados */
+  pintarComposer(){
+    const bar=$("#composerBar"); if(bar.dataset.listo) return;
+    const voz=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
+    const icoSend=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg>`;
+    bar.innerHTML=`<div class="inner"><div class="composer">
+        <textarea id="txtEntrada" rows="1" placeholder="50 lucas de carne, 20 de súper…" aria-label="Gasto a cargar"></textarea>
+        <button type="button" class="cbtn" id="sendBtn" aria-label="Interpretar" hidden>${icoSend}</button>
+        ${voz?`<button type="button" class="cbtn" id="micBtn" aria-label="Dictar"></button>`:""}
+      </div></div>`;
+    bar.dataset.listo="1";
+    const ta=$("#txtEntrada"), send=$("#sendBtn"), mic=$("#micBtn");
+    const sync=()=>{
+      const hay=ta.value.trim().length>0;
+      if(send) send.hidden=this.escuchando||(!hay&&!!mic);
+      if(send&&!mic) send.disabled=!hay;
+      if(mic) mic.hidden=hay&&!this.escuchando;
+      ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,140)+"px";
+      this.ubicarComposer();
+    };
+    this._syncComposer=sync;
+    ta.addEventListener("input",sync);
+    ta.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); const t=ta.value.trim(); if(t) this.procesar(t); } });
+    if(send) send.onclick=()=>{ const t=ta.value.trim(); if(t) this.procesar(t); };
+    if(mic) mic.onclick=()=>this.alternarVoz();
+    this.actualizarComposer();
+  },
+  actualizarComposer(){
+    const ta=$("#txtEntrada"), mic=$("#micBtn"); if(!ta) return;
+    const icoMic=`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>`;
+    const icoStop=`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></svg>`;
+    ta.placeholder=this.escuchando?"Escuchando…":"50 lucas de carne, 20 de súper…";
+    if(mic){ mic.classList.toggle("rec",!!this.escuchando); mic.setAttribute("aria-label",this.escuchando?"Terminar dictado":"Dictar"); mic.innerHTML=this.escuchando?icoStop:icoMic; }
+    if(this._syncComposer) this._syncComposer();
+  },
+  /* el compositor va pegado arriba de las pestañas; el contenido deja lugar para los dos */
+  ubicarComposer(){
+    const bar=$("#composerBar"), tabs=$("#tabs"), shell=$("#shell");
+    const th=tabs.hidden?0:tabs.offsetHeight;
+    bar.style.bottom=th+"px";
+    shell.style.paddingBottom=(th+(bar.hidden?0:bar.offsetHeight)+16)+"px";
   },
 
   /* agrupa varios pedidos de render en uno solo por cuadro; si el usuario está
@@ -1271,7 +1353,6 @@ const App={
     }
 
     /* lo que el usuario tenía a medio hacer sobrevive al redibujado */
-    const ta=$("#txtEntrada"), textoPrevio=ta?ta.value:null;
     const abiertos=[...v.querySelectorAll("details.set")].map(d=>d.open);
     const act=document.activeElement;
     let foco=null;
@@ -1290,8 +1371,10 @@ const App={
     this.conectar();
     this.pintarTabs();
 
-    const ta2=$("#txtEntrada"); if(ta2&&textoPrevio) ta2.value=textoPrevio;
-    if(ta2&&this._syncComposer) this._syncComposer();
+    const bar=$("#composerBar");
+    if(this.tab==="cargar"&&!this.bloqueado){ this.pintarComposer(); bar.hidden=false; this.actualizarComposer(); }
+    else bar.hidden=true;
+    this.ubicarComposer();
     if(abiertos.length) v.querySelectorAll("details.set").forEach((d,i)=>{ if(abiertos[i]!==undefined) d.open=abiertos[i]; });
     if(foco&&foco.key){
       const el=v.querySelector(foco.key);
@@ -1370,32 +1453,19 @@ const App={
 
   /* ---------------------------------------------------------------- CARGAR */
   vistaCargar(){
-    const voz=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
     const b=this.borradores;
-    let h=`<section class="card" style="display:flex;flex-direction:column;gap:13px">
+    let h=`<section class="card" style="display:flex;flex-direction:column;gap:12px">
       <div class="sechead" style="margin:0"><h2 class="sec">Cargar</h2>
-        <span class="eyebrow">${MESES[Number(this.mes.split("-")[1])-1]}</span></div>`;
-
-    if(this.ultimoTexto) h+=`<div class="heard">“${esc(this.ultimoTexto)}”</div>`;
-    h+=this.bannerRespaldo();
-
-    /* un solo botón redondo: micrófono con el campo vacío, enviar cuando hay texto */
-    const icoMic=`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>`;
-    const icoStop=`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></svg>`;
-    const icoSend=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg>`;
-    h+=`<div class="composer">
-        <textarea id="txtEntrada" rows="1" placeholder="${this.escuchando?"Escuchando…":"50 lucas de carne, 20 de súper…"}" aria-label="Gasto a cargar"></textarea>
-        <button type="button" class="cbtn" id="sendBtn" aria-label="Interpretar" hidden>${icoSend}</button>
-        ${voz?`<button type="button" class="cbtn ${this.escuchando?"rec":""}" id="micBtn" aria-label="${this.escuchando?"Terminar dictado":"Dictar"}">${this.escuchando?icoStop:icoMic}</button>`:""}
-      </div>
-      <div>
-        <div class="eyebrow" style="margin-bottom:7px">O cargá a mano</div>
-        <div class="row">
-          <button class="btn out sm" data-nuevo="gasto">+ Gasto</button>
-          <button class="btn out sm" data-nuevo="ing">+ Ingreso</button>
-          <button class="btn out sm" data-nuevo="inv">+ Ahorro</button>
-        </div>
+        <span class="eyebrow">${MESES[Number(this.mes.split("-")[1])-1]}</span></div>
+      <div class="row">
+        <button class="btn out sm" data-nuevo="gasto">+ Gasto</button>
+        <button class="btn out sm" data-nuevo="ing">+ Ingreso</button>
+        <button class="btn out sm" data-nuevo="inv">+ Ahorro</button>
       </div></section>`;
+    h+=this.bannerRespaldo();
+    if(this.ultimoTexto) h+=`<div class="heard">“${esc(this.ultimoTexto)}”</div>`;
+    if(!b.length&&!this.ultimoTexto)
+      h+=`<div class="empty" style="padding-top:34px"><b>Dictá o escribí un gasto abajo</b>Por ejemplo: “50 lucas de carne, 20 de súper”.</div>`;
 
     if(b.length){
       h+=`<section class="card" style="display:flex;flex-direction:column;gap:11px">
@@ -1441,7 +1511,7 @@ const App={
     </div>`;
   },
 
-  bloqueMovimientos(){
+  bloqueMovimientos(interno){
     const m=store.mes(this.mes), todos=[];
     if(m){
       m.gastos.forEach(g=>todos.push({...g,_t:"gasto"}));
@@ -1456,9 +1526,9 @@ const App={
     const total=movs.reduce((s,x)=>s+(Number(x.monto)||0),0);
     const nombreF={todos:"Todos",gasto:"Gastos",ing:"Ingresos",inv:"Ahorro"};
 
-    let h=`<section class="card"><div class="sechead"><h2 class="sec">Movimientos del mes</h2>
-      <span class="eyebrow">${movs.length}${f==="todos"?"":" de "+todos.length}</span></div>
-      <div class="segs" role="tablist" style="margin-bottom:12px">
+    let h=interno?"":`<section class="card"><div class="sechead"><h2 class="sec">Movimientos del mes</h2>
+      <span class="eyebrow">${movs.length}${f==="todos"?"":" de "+todos.length}</span></div>`;
+    h+=`<div class="segs" role="tablist" style="margin-bottom:12px">
         <button role="tab" data-fmov="todos" aria-selected="${f==="todos"}">Todos</button>
         <button role="tab" data-fmov="gasto" aria-selected="${f==="gasto"}">Gastos${cuenta("gasto")?` <small>${cuenta("gasto")}</small>`:""}</button>
         <button role="tab" data-fmov="ing" aria-selected="${f==="ing"}">Ingresos${cuenta("ing")?` <small>${cuenta("ing")}</small>`:""}</button>
@@ -1482,17 +1552,19 @@ const App={
       }).join("")+`</div>`;
     }
     if(movs.length) h+=`<div class="tot"><span>Total ${f==="todos"?"del mes":nombreF[f].toLowerCase()}</span><b class="num">${money(total)}</b></div>`;
-    return h+`</section>`;
+    return h+(interno?"":`</section>`);
   },
 
   /* --------------------------------------------------------------- RESUMEN */
   vistaResumen(){
     const key=this.mes, mesN=MESES[Number(key.split("-")[1])-1].toLowerCase();
     const modo=this.heroModo||"real", proy=modo==="proy", est=modo==="est";
-    const ing=calc.ingresos(key),inv=calc.invertido(key);
-    /* Real: lo gastado. Proyectado: los topes (un mes normal).
-       Estimado: por categoría, lo mayor entre tope y gastado (lo que ya pasó no se descuenta) */
+    const inv=calc.invertido(key), ingReal=calc.ingresos(key), ingEsp=calc.ingEsperado(key);
+    /* Real: lo gastado y lo cobrado. Proyectado: topes e ingresos esperados (un mes normal).
+       Estimado: por rubro, lo mayor entre lo previsto y lo que ya pasó */
+    const ing=proy?(ingEsp>0?ingEsp:ingReal):est?calc.ingEstimado(key):ingReal;
     const gas=proy?calc.presupuesto(key):est?calc.estimado(key):calc.gastado(key);
+    const lblIng=proy&&ingEsp>0?"Ingresos esperados":est?"Ingresos estimados":"Ingresos";
     const arr=calc.arrastre(key),neto=ing-gas-inv,final=neto+arr;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
     const lbl=(proy||est)?(final>=0?"Te sobraría":"Te faltarían"):(final>=0?"Te sobró":"Estás en rojo por");
@@ -1507,14 +1579,14 @@ const App={
       <div class="lbl">${lbl}</div>
       <div class="big num">${money(Math.abs(final))}</div>
       <div class="sub">${proy
-        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Ingresos menos tus topes`)
+        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`${ingEsp>0?"Ingresos esperados":"Ingresos"} menos tus topes`)
         : est
         ? (sinTopes?`Sin topes en ${mesN}, es igual al real`:`Lo ya gastado más lo que falta gastar de cada tope`)
         : (store.config.arrastre&&arr!==0
           ? `${money(neto)} de este mes ${arr>=0?"+":"−"} ${money(Math.abs(arr))} que venías arrastrando`
           : `Ingresos menos gastos y ahorro de ${mesN}`)}</div>
       <div class="miniflow">
-        <div><span class="k">Ingresos</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
+        <div><span class="k">${lblIng}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
         <div><span class="k">${proy?"Gastos proyectados":est?"Gastos estimados":"Gastos"}</span><span class="v num">${money(gas)}</span></div>
         <div><span class="k">Ahorro</span><span class="v num" style="color:var(--brand-ink)">${money(inv)}</span></div>
       </div></section>
@@ -1548,18 +1620,8 @@ const App={
         <div class="sechead"><h2 class="sec">En qué se fue</h2>
           <span class="eyebrow">${conGasto.length} categoría${conGasto.length===1?"":"s"}</span></div>
         ${this.donut(items,gas,"Gastado",money(gas),MESES[Number(key.split("-")[1])-1])}
-        <p class="hint" style="text-align:center;margin:6px 0 0">Tocá una porción para ver cuánto es.</p>
-      </section>`;
-    }
-
-    if(presup>0){
-      const p=gas/presup*100, est=p>100?"crit":(p>=85?"warn":"ok");
-      h+=`<section class="card">
-        <div class="sechead"><h2 class="sec">Presupuesto del mes</h2>
-          <span class="eyebrow num">${money(gas)} de ${money(presup)}</span></div>
-        <div class="meter" style="height:13px;margin-top:0">
-          <i style="width:${Math.min(p,100)}%;background:${est==="crit"?"var(--crit)":est==="warn"?"var(--warn)":"var(--brand)"}"></i></div>
-        <span class="metertag tag-${est}">${pct(p)} usado${p>100?` · ${money(gas-presup)} de más`:` · te quedan ${money(presup-gas)}`}</span>
+        ${presup>0?this.lineaProyectado("Proyectado",presup,"Gastado",gas,"por debajo de lo proyectado","por encima de lo proyectado")
+          :`<p class="hint" style="text-align:center;margin:6px 0 0">Tocá una porción para ver cuánto es.</p>`}
       </section>`;
     }
 
@@ -1622,16 +1684,25 @@ const App={
     return h;
   },
 
+  /* dos cifras y una frase debajo de una torta: proyectado vs real, sin barra */
+  lineaProyectado(k1,v1,k2,v2,txtMenos,txtMas){
+    const est=estadoTope(v2,v1);
+    const frase=v2>v1*1.01?`Vas ${money(v2-v1)} ${txtMas} · ${pct(v2/v1*100)}`
+      :v2<v1*0.99?`Vas ${money(v1-v2)} ${txtMenos} · ${pct(v2/v1*100)}`:"Justo en lo proyectado";
+    return `<div class="proyline">
+        <div><span class="k">${esc(k1)}</span><b class="num">${money(v1)}</b></div>
+        <div><span class="k">${esc(k2)}</span><b class="num">${money(v2)}</b></div>
+      </div>
+      <div style="text-align:center"><span class="metertag tag-${est}" style="margin-top:8px">${frase}</span></div>`;
+  },
+
   filaCategoria(c,totalMes){
     const abierta=!!this.abiertas[c.cat.id], color=colorDe(c.cat.color);
     const p=c.presup>0?c.gastado/c.presup*100:null;
-    const est=p===null?"none":(p>100?"crit":p>=85?"warn":"ok");
-    const fill=p===null?color:(est==="crit"?"var(--crit)":est==="warn"?"var(--warn)":color);
+    const est=estadoTope(c.gastado,c.presup);
+    const fill=colorEstado(est,color);
     const share=totalMes>0?c.gastado/totalMes*100:0;
-
-    const tag = p===null ? `<span class="metertag tag-none">Sin presupuesto</span>`
-      : p>100 ? `<span class="metertag tag-crit">${pct(p)} · ${money(c.gastado-c.presup)} de más</span>`
-      : `<span class="metertag tag-${est}">${pct(p)} · te quedan ${money(c.presup-c.gastado)}</span>`;
+    const tag=`<span class="metertag tag-${est}">${textoEstado(est,c.gastado,c.presup)}</span>`;
 
     let subs="";
     if(abierta){
@@ -1640,15 +1711,12 @@ const App={
         const maxGasto=Math.max(...c.lista.map(s=>s.monto),1);
         cuerpo=c.lista.map((s,i)=>{
           if(s.tope>0){
-            const sp=s.monto/s.tope*100;
-            const sest=sp>100?"crit":sp>=85?"warn":"ok";
-            const sfill=sest==="crit"?"var(--crit)":sest==="warn"?"var(--warn)":color;
+            const sp=s.monto/s.tope*100, sest=estadoTope(s.monto,s.tope), sfill=colorEstado(sest,color);
             return `<div class="subrow">
               <div class="top"><span>${esc(s.nombre)}</span>
                 <span class="num">${money(s.monto)}<em>de ${money(s.tope)}</em></span></div>
               <div class="subbar"><i style="width:${Math.min(sp,100)}%;background:${sfill}"></i></div>
-              <div class="subtag ${sest}">${pct(sp)}${sp>100?` · ${money(s.monto-s.tope)} de más`
-                :` · te quedan ${money(s.tope-s.monto)}`}</div></div>`;
+              <div class="subtag ${sest}">${textoEstado(sest,s.monto,s.tope)}</div></div>`;
           }
           return `<div class="subrow">
             <div class="top"><span>${esc(s.nombre)}${s.definida?"":`<i class="libre" title="No está en la lista de subcategorías">libre</i>`}</span>
@@ -1677,26 +1745,22 @@ const App={
   },
 
   panelIngresos(key){
-    const m=store.mes(key), ing=calc.ingresos(key), fuentes=calc.porFuente(key);
-    if(!ing){
+    const m=store.mes(key), ing=calc.ingresos(key), fuentes=calc.porFuente(key), mesN=MESES[Number(key.split("-")[1])-1];
+    const esperado=calc.ingEsperado(key);
+    if(!ing&&!esperado){
       return `<section class="card"><div class="empty"><b>Sin ingresos cargados</b>
         Cargá tu sueldo o lo que te haya entrado este mes.</div>
         <button class="btn pri full" data-nuevo="ing">+ Cargar ingreso</button></section>`;
     }
 
-    const items=fuentes.map((f,i)=>({id:null,nombre:f.nombre,monto:f.monto,color:colorDe(i)}));
+    const items=fuentes.filter(f=>f.monto>0).map(f=>({id:null,nombre:f.nombre,monto:f.monto,color:colorDe(fuentes.indexOf(f))}));
     let h=`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
         <span class="eyebrow">${fuentes.length} fuente${fuentes.length===1?"":"s"}</span></div>
-      ${this.donut(items,ing,"Ingresó",money(ing),MESES[Number(key.split("-")[1])-1])}
+      ${ing>0?this.donut(items,ing,"Ingresó",money(ing),mesN):""}
+      ${esperado>0?this.lineaProyectado("Esperado",esperado,"Cobrado",ing,"por debajo de lo esperado","por encima de lo esperado"):""}
       <div class="catlist" style="margin-top:8px">`
-      + fuentes.map((f,i)=>`<div class="catrow">
-          <div class="cathead">
-            <span class="catname"><i class="dot" style="background:${colorDe(i)}"></i><b>${esc(f.nombre)}</b></span>
-            <span class="catnums"><span class="a num">${money(f.monto)}</span>
-              <span class="b num">${pct(f.monto/ing*100)}</span></span></div>
-          <div class="meter"><i style="width:${f.monto/fuentes[0].monto*100}%;background:${colorDe(i)}"></i></div>
-        </div>`).join("")
+      + fuentes.map((f,i)=>this.filaFuente(f,i,ing)).join("")
       + `</div><div class="tot"><span>Total ingresado</span><b class="num" style="color:var(--good-ink)">${money(ing)}</b></div></section>`;
 
     h+=`<section class="card"><div class="sechead"><h2 class="sec">Movimientos</h2>
@@ -1717,12 +1781,37 @@ const App={
     return h;
   },
 
+  /* una fuente de ingreso: barra contra lo esperado y desglose por detalle al tocarla */
+  filaFuente(f,i,total){
+    const clave="ing:"+f.nombre, abierta=!!this.abiertas[clave], color=colorDe(i);
+    const est=estadoTope(f.monto,f.esperado), fill=colorEstado(est,color);
+    const p=f.esperado>0?Math.min(f.monto/f.esperado*100,100):(total>0?f.monto/total*100:0);
+    const tag=f.esperado>0?`<span class="metertag tag-${est}">${textoEstado(est,f.monto,f.esperado)}</span>`
+      :`<span class="metertag tag-none">Sin esperado</span>`;
+    let subs="";
+    if(abierta){
+      const max=f.lista.length?f.lista[0].monto:1;
+      const cuerpo=f.lista.length?f.lista.map((s,j)=>`<div class="subrow">
+          <div class="top"><span>${esc(s.nombre)}</span><span class="num">${money(s.monto)}<em>${f.monto>0?pct(s.monto/f.monto*100):""}</em></span></div>
+          <div class="subbar"><i style="width:${Math.max(s.monto/max*100,3)}%;background:${color};opacity:${Math.max(1-j*.12,.4)}"></i></div>
+        </div>`).join(""):`<div class="hint">Todavía no cobraste nada de esta fuente.</div>`;
+      subs=`<div class="subs">${cuerpo}</div>`;
+    }
+    return `<div class="catrow ${abierta?"open":""}">
+      <button type="button" class="cathead" data-fuente="${esc(f.nombre)}" aria-expanded="${abierta}">
+        <span class="catname"><i class="dot" style="background:${color}"></i><b>${esc(f.nombre)}</b></span>
+        <span class="catnums"><span class="a num">${money(f.monto)}</span>
+          <span class="b num">${f.esperado>0?"de "+money(f.esperado):(total>0&&f.monto>0?pct(f.monto/total*100)+" del total":"")}</span></span>
+      </button>
+      <div class="meter"><i style="width:${p}%;background:${fill}"></i></div>${tag}${subs}</div>`;
+  },
+
   /* --------------------------------------------------------------- ALERTAS */
   vistaAlertas(){
     const key=this.mes, mesN=MESES[Number(key.split("-")[1])-1];
     const a=calc.alertas(key);
     const fila=(f,derecha,est)=>`<div class="alrow">
-        <i class="dot" style="background:${colorDe(f.cat.color)}"></i>
+        <i class="dot" style="background:${f.ing?"var(--good)":colorDe(f.cat.color)}"></i>
         <span class="g"><b>${esc(f.nombre||f.cat.nombre)}</b>${f.nombre?`<small>${esc(f.cat.nombre)}</small>`:""}</span>
         <span class="num r ${est}">${derecha}</span></div>`;
 
@@ -1732,7 +1821,7 @@ const App={
         <button class="btn pri full" data-irpresup="1">Poner presupuestos</button></section>`;
     }
 
-    const disponible=a.conSaldo.reduce((s,f)=>s+(f.tope-f.gastado),0)+a.sinCargar.reduce((s,f)=>s+f.tope,0);
+    const disponible=a.conSaldo.filter(f=>!f.ing).reduce((s,f)=>s+(f.tope-f.gastado),0)+a.sinCargar.filter(f=>!f.ing).reduce((s,f)=>s+f.tope,0);
     let h=`<section class="hero" style="--hero-accent:var(--brand-ink)">
       <div class="lbl">Te queda por gastar dentro de los topes</div>
       <div class="big num">${money(disponible)}</div>
@@ -1741,12 +1830,12 @@ const App={
 
     h+=`<section class="card"><div class="sechead"><h2 class="sec">Todavía sin cargar</h2><span class="eyebrow">${a.sinCargar.length}</span></div>`;
     h+= a.sinCargar.length
-      ? `<p class="hint" style="margin:-4px 0 10px">Tienen tope pero ningún gasto en ${mesN}. Si ya lo pagaste, cargalo.</p><div class="allist">${a.sinCargar.map(f=>fila(f,"tope "+money(f.tope),"none")).join("")}</div>`
+      ? `<p class="hint" style="margin:-4px 0 10px">Tienen tope pero nada cargado en ${mesN}. Si ya pasó, cargalo.</p><div class="allist">${a.sinCargar.map(f=>fila(f,(f.ing?"esperado ":"tope ")+money(f.tope),"none")).join("")}</div>`
       : `<div class="empty">Todo lo que tiene tope ya tiene algo cargado.</div>`;
     h+=`</section>`;
 
     if(a.conSaldo.length) h+=`<section class="card"><div class="sechead"><h2 class="sec">Con saldo disponible</h2><span class="eyebrow">${a.conSaldo.length}</span></div>
-      <div class="allist">${a.conSaldo.map(f=>fila(f,"quedan "+money(f.tope-f.gastado),"ok")).join("")}</div></section>`;
+      <div class="allist">${a.conSaldo.map(f=>fila(f,(f.ing?"faltan ":"quedan ")+money(f.tope-f.gastado),"ok")).join("")}</div></section>`;
 
     if(a.pasados.length) h+=`<section class="card"><div class="sechead"><h2 class="sec">Pasados del tope</h2><span class="eyebrow">${a.pasados.length}</span></div>
       <div class="allist">${a.pasados.map(f=>fila(f,"+"+money(f.gastado-f.tope),"crit")).join("")}</div></section>`;
@@ -1844,11 +1933,23 @@ const App={
           <button class="btn pri sm" id="activarLock">Activar bloqueo</button>`}
       </div></details>
 
+    <details class="set" id="setMovs"><summary>Movimientos de ${MESES[Number(this.mes.split("-")[1])-1]}
+      <span class="eyebrow">${(m.gastos||[]).length+(m.ingresos||[]).length+(m.inversiones||[]).length}</span></summary>
+      <div class="body">${this.bloqueMovimientos(true)}</div></details>
+
     <details class="set" id="setPresup"><summary>Presupuestos de ${MESES[Number(this.mes.split("-")[1])-1]}
       <span class="eyebrow num">${money(calc.presupuesto(this.mes))}</span></summary>
       <div class="body">
-        <p class="hint">Lo que pensás gastar. En las categorías con subcategorías el tope va en cada una,
+        <p class="hint">Lo que esperás cobrar y lo que pensás gastar. En las categorías con subcategorías el tope va en cada una,
           y la categoría es la suma.</p>
+        <div class="pgrupo">
+          <div class="phead"><b><i class="dot" style="background:var(--good)"></i>Ingresos esperados</b>
+            <span class="tt"><small>Total</small><span class="num" data-total="__ing">${money(calc.ingEsperado(this.mes))}</span></span></div>
+          ${c.fuentes.map(f=>`<div class="psub"><span>${esc(f)}</span>
+            <input type="text" class="num" data-presup-ing="${esc(f)}" inputmode="numeric"
+              value="${esc(((this.presupDraft||{})["i|"+f]!==undefined)?(this.presupDraft||{})["i|"+f]:(calc.ingEsperadoDe(m,f)?money(calc.ingEsperadoDe(m,f)):""))}"
+              placeholder="Sin esperado" aria-label="Ingreso esperado de ${esc(f)}"></div>`).join("")}
+        </div>
         ${c.cats.map(cat=>{
           const tiene=cat.subs&&cat.subs.length;
           /* lo tipeado y todavía no guardado se conserva en memoria (presupDraft) */
@@ -1953,24 +2054,6 @@ const App={
     /* cuando el usuario suelta un campo, se aplica el redibujado que quedó esperando */
     v.onfocusout=()=>{ setTimeout(()=>{ if(this._renderDiferido&&!this.editando()){ this._renderDiferido=false; clearTimeout(this._tDiferido); this._tDiferido=null; this.render(); } },0); };
 
-    /* compositor tipo chat: el botón cambia entre micrófono y enviar según haya texto */
-    const ta=$("#txtEntrada"), send=$("#sendBtn"), mic=$("#micBtn");
-    if(ta){
-      const sync=()=>{
-        const hay=ta.value.trim().length>0;
-        if(send) send.hidden=this.escuchando||(!hay&&!!mic);
-        if(send&&!mic) send.disabled=!hay;
-        if(mic) mic.hidden=hay&&!this.escuchando;
-        ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,140)+"px";
-      };
-      this._syncComposer=sync;
-      ta.addEventListener("input",sync); sync();
-      ta.addEventListener("keydown",e=>{
-        if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); const t=ta.value.trim(); if(t) this.procesar(t); }
-      });
-      if(send) send.onclick=()=>{ const t=ta.value.trim(); if(t) this.procesar(t); };
-      if(mic) mic.onclick=()=>this.alternarVoz();
-    }
     const ia=$("#iaBtn"); if(ia) ia.onclick=()=>{
       const t=this.ultimoTexto||($("#txtEntrada")?$("#txtEntrada").value.trim():"");
       if(!t) return this.toast("No hay nada para interpretar.");
@@ -2003,6 +2086,7 @@ const App={
 
     v.querySelectorAll("[data-sub]").forEach(b=>b.onclick=()=>{this.sub=b.dataset.sub;this.render();});
     v.querySelectorAll("[data-hero]").forEach(b=>b.onclick=()=>{this.heroModo=b.dataset.hero;this.render();});
+    v.querySelectorAll("[data-fuente]").forEach(b=>b.onclick=()=>{const k="ing:"+b.dataset.fuente;this.abiertas[k]=!this.abiertas[k];this.render();});
     /* desde la vista de tortas, tocar una categoría lleva a su detalle abierto */
     v.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
       const id=b.dataset.cat;
@@ -2056,6 +2140,15 @@ const App={
       inp.addEventListener("input",()=>{ this.presupDraft[k]=inp.value; });
       inp.addEventListener("change",()=>{ formatear(inp); this.presupDraft[k]=inp.value; });
     });
+    v.querySelectorAll("[data-presup-ing]").forEach(inp=>{
+      const k="i|"+inp.dataset.presupIng;
+      inp.addEventListener("input",()=>{
+        this.presupDraft[k]=inp.value; let t=0;
+        v.querySelectorAll("[data-presup-ing]").forEach(x=>{ t+=this.leerMonto(x.value); });
+        const out=v.querySelector('[data-total="__ing"]'); if(out) out.textContent=money(t);
+      });
+      inp.addEventListener("change",()=>{ formatear(inp); this.presupDraft[k]=inp.value; });
+    });
 
     const gp=$("#guardarPresup"); if(gp) gp.onclick=()=>{
       const m=store.ensureMes(this.mes);
@@ -2072,6 +2165,11 @@ const App={
         /* si ahora hay topes por subcategoría, el tope suelto de la categoría sobra */
         if(n>0) delete m.presupuestos[cid];
       });
+      m.presupuestosIng=m.presupuestosIng||{};
+      v.querySelectorAll("[data-presup-ing]").forEach(inp=>{
+        const f=inp.dataset.presupIng, n=this.leerMonto(inp.value);
+        if(n>0) m.presupuestosIng[f]=n; else delete m.presupuestosIng[f];
+      });
       this.presupDraft={};
       const det=$("#setPresup"); if(det) det.open=false;
       if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();
@@ -2082,12 +2180,14 @@ const App={
     };
     const cp=$("#copiarPresup"); if(cp) cp.onclick=()=>{
       const prev=store.mes(keyMas(this.mes,-1));
-      const hay=prev&&(Object.keys(prev.presupuestos||{}).length||Object.keys(prev.presupuestosSub||{}).length);
+      const hay=prev&&(Object.keys(prev.presupuestos||{}).length||Object.keys(prev.presupuestosSub||{}).length||Object.keys(prev.presupuestosIng||{}).length);
       if(!hay) return this.toast("El mes anterior no tiene presupuestos.");
       const m=store.ensureMes(this.mes);
       m.presupuestos={...(prev.presupuestos||{})};
       m.presupuestosSub={};
       for(const c in (prev.presupuestosSub||{})) m.presupuestosSub[c]={...prev.presupuestosSub[c]};
+      m.presupuestosIng={...(prev.presupuestosIng||{})};
+      this.presupDraft={};
       store.guardarMes(this.mes); this.toast("Copiados del mes anterior.");
     };
 
