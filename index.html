@@ -408,7 +408,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260924-190415 -->
+<!-- build 20260924-190942 -->
 
 <div id="shell">
   <header id="topbar">
@@ -768,6 +768,15 @@ const calc={
 
       filas.sort((a,b)=> (b.monto-a.monto) || (b.tope-a.tope) || a.nombre.localeCompare(b.nombre));
       c.lista=filas;
+      /* lo que falta y lo que sobra se cuentan subcategoría por subcategoría:
+         pasarse en una no descuenta lo que falta pagar en otra */
+      if(c.porSubs){
+        c.faltan=filas.reduce((s,x)=>s+(x.tope>x.monto?x.tope-x.monto:0),0);
+        c.deMas=filas.reduce((s,x)=>s+(x.tope>0&&x.monto>x.tope?x.monto-x.tope:0),0);
+      }else{
+        c.faltan=c.presup>c.gastado?c.presup-c.gastado:0;
+        c.deMas=c.presup>0&&c.gastado>c.presup?c.gastado-c.presup:0;
+      }
       c.sinUsar=subs.filter(s=>!(gastadoPorSub[norm(s)]>0) && !(this.topeSub(m,c.cat.id,s)>0));
     }
     return out;
@@ -1918,10 +1927,17 @@ const App={
   filaCategoria(c,totalMes){
     const abierta=!!this.abiertas[c.cat.id], color=colorDe(c.cat.color);
     const p=c.presup>0?c.gastado/c.presup*100:null;
-    const est=estadoTope(c.gastado,c.presup);
+    /* estado de la categoría a partir de sus partes: amarillo si falta algo,
+       rojo si sólo hay excesos, verde si todo está completo */
+    const est=c.presup>0?(c.faltan>0.5?"warn":c.deMas>0.5?"crit":"ok"):"none";
     const fill=colorEstado(est,color);
     const share=totalMes>0?c.gastado/totalMes*100:0;
-    const tag=`<span class="metertag tag-${est}">${textoEstado(est,c.gastado,c.presup)}</span>`;
+    const partes=[];
+    if(c.presup>0){ partes.push(pct(c.gastado/c.presup*100));
+      if(c.faltan>0.5) partes.push("faltan "+money(c.faltan));
+      if(c.deMas>0.5) partes.push(money(c.deMas)+" de más");
+      if(c.faltan<=0.5&&c.deMas<=0.5) partes.push("completo"); }
+    const tag=`<span class="metertag tag-${est}">${c.presup>0?partes.join(" · "):"Sin tope"}</span>`;
 
     let subs="";
     if(abierta){
