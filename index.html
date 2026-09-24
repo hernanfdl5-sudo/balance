@@ -330,6 +330,31 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .subedit input{flex:1}
 /* cartera */
 .gain{color:var(--good-ink)} .loss{color:var(--crit-ink)}
+.hero .big2{font-family:"Instrument Serif",Georgia,serif;font-size:27px;line-height:1.05;letter-spacing:-.3px;color:var(--ink);margin:2px 0 6px;opacity:.92}
+.miniflow.tres{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 10px}
+.miniflow.tres .k{white-space:normal;line-height:1.25}
+.miniflow .s{display:block;font-size:11px;font-weight:600;margin-top:1px}
+.ojo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--ink-3);background:var(--surface-3);flex:none}
+.ojo svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.secmeta{display:block;margin-top:7px;font-size:12px;color:var(--ink-3)}
+.secmeta b{color:var(--ink);font-weight:700}
+.kpis.tres{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 8px}
+.kpis.tres .num{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* tabla de monedas */
+.tabla{display:flex;flex-direction:column}
+.tabla .th{display:grid;grid-template-columns:1.1fr 1fr 1.2fr;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:700;padding:0 4px 8px;border-bottom:1px solid var(--line)}
+.tabla .th span:not(:first-child){text-align:right}
+.tabla .tr{display:grid;grid-template-columns:1.1fr 1fr 1.2fr;gap:6px;align-items:center;width:100%;padding:11px 4px;border-bottom:1px solid var(--line);text-align:left;border-radius:8px}
+.tabla .tr:hover{background:var(--surface-2)}
+.tabla .tr b{display:block;font-weight:700;font-size:14px;line-height:1.2}
+.tabla .tr small{display:block;font-size:11px;color:var(--ink-3);line-height:1.3}
+.tabla .c1{display:flex;align-items:center;gap:8px;min-width:0}
+.tabla .c2,.tabla .c3{text-align:right;min-width:0;overflow:hidden}
+.tabla .c2 b,.tabla .c3 b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.coindet{padding:4px 4px 12px;border-bottom:1px solid var(--line)}
+.evo{display:block;width:100%;height:auto;margin-top:2px}
+.evo .g{stroke:var(--grid);stroke-width:1}
+.evo .t{font-size:9px;fill:var(--ink-3);font-family:inherit}
 .linkbtn{color:var(--brand-ink);font-weight:600;font-size:inherit;text-decoration:underline dotted;padding:0}
 .secsub{display:block;font-size:11px;color:var(--ink-3);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
 .secrow{display:block;width:100%;text-align:left}
@@ -379,7 +404,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260924-180336 -->
+<!-- build 20260924-182701 -->
 
 <div id="shell">
   <header id="topbar">
@@ -906,9 +931,21 @@ const cartera={
       ]);
       if(rc&&rc.ok){ const j=await rc.json(); for(const id in j) this.precios.cripto[id]={usd:Number(j[id].usd),ch:Number(j[id].usd_24h_change)}; }
       if(rd&&rd.ok){ const j=await rd.json(); const v=Number(j.venta)||Number(j.compra); if(v>0){ this.precios.dolar=v; this.precios.dolarNombre=j.nombre||this.d.dolar; } }
-      this.precios.ts=Date.now(); this.precios.error=null; this.guardarCache(); return true;
+      this.precios.ts=Date.now(); this.precios.error=null; this.guardarCache();
+      this.registrarDia(); return true;
     }catch(e){ this.precios.error="sin conexión"; return false; }
     finally{ this.precios.cargando=false; }
+  },
+  /* guarda el valor de hoy (uno por día) para el gráfico de evolución */
+  registrarDia(){
+    try{
+      const V=this.valuar(this.posiciones()); if(!(V.totalUsd>0)) return;
+      const hoy=hoyISO(), hist=this.d.hist=(this.d.hist||[]);
+      const p={d:hoy,usd:Math.round(V.totalUsd*100)/100,ars:Math.round(V.totalArs||0)};
+      const i=hist.findIndex(x=>x.d===hoy); if(i>-1) hist[i]=p; else hist.push(p);
+      if(hist.length>400) hist.splice(0,hist.length-400);
+      store.guardarConfig();
+    }catch(e){}
   },
   async buscarMoneda(q){
     try{
@@ -1773,12 +1810,16 @@ const App={
     </div>`;
     if(ve==="torta") return h+this.panelProyectadoReal(key,lista,gas,presup);
 
-    if(conGasto.length){
+    const ahorroMes=calc.invertido(key);
+    if(conGasto.length||ahorroMes>0){
+      /* el ahorro no es un gasto, pero sí plata que salió: va como una porción más */
       const items=conGasto.map(c=>({id:c.cat.id,nombre:c.cat.nombre,monto:c.gastado,color:colorDe(c.cat.color)}));
+      if(ahorroMes>0) items.push({id:null,nombre:"Ahorro",monto:ahorroMes,color:"var(--brand)"});
+      const salio=gas+ahorroMes;
       h+=`<section class="card">
         <div class="sechead"><h2 class="sec">En qué se fue</h2>
-          <span class="eyebrow">${conGasto.length} categoría${conGasto.length===1?"":"s"}</span></div>
-        ${this.donut(items,gas,"Gastado",money(gas),MESES[Number(key.split("-")[1])-1])}
+          <span class="eyebrow">${conGasto.length} categoría${conGasto.length===1?"":"s"}${ahorroMes>0?" + ahorro":""}</span></div>
+        ${this.donut(items,salio,"Salió",money(salio),ahorroMes>0?`${money(gas)} gastos · ${money(ahorroMes)} ahorro`:MESES[Number(key.split("-")[1])-1])}
         ${presup>0?this.lineaProyectado("Proyectado",presup,"Gastado",gas,"por debajo de lo proyectado","por encima de lo proyectado")
           :`<p class="hint" style="text-align:center;margin:6px 0 0">Tocá una porción para ver cuánto es.</p>`}
       </section>`;
@@ -2002,10 +2043,25 @@ const App={
   },
 
   /* ---------------------------------------------------------------- AHORRO */
+  /* ojito: con los montos ocultos, todo lo que sea plata se muestra tapado */
+  get priv(){ if(this._priv===undefined){ try{ this._priv=localStorage.getItem("bp_priv")==="1"; }catch(e){ this._priv=false; } } return this._priv; },
+  set priv(v){ this._priv=!!v; try{ localStorage.setItem("bp_priv",v?"1":"0"); }catch(e){} },
+  ocultable(){
+    const p=this.priv;
+    return { money:v=>p?"$ ••••":money(v), usd:v=>p?"US$ ••••":usd(v), moneyD:v=>p?"$ ••••":moneyD(v),
+      cantidad:v=>p?"••••":cantidad(v), signo:(v,f)=>p?"••••":signo(v,f), pct:v=>p?"••":pctSigno(v) };
+  },
+  botonOjo(){
+    return `<button type="button" class="ojo" id="ojoPriv" aria-label="${this.priv?"Mostrar montos":"Ocultar montos"}" title="${this.priv?"Mostrar montos":"Ocultar montos"}">
+      ${this.priv?`<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A10.4 10.4 0 0 1 12 5c5 0 9 4 10 7a11.6 11.6 0 0 1-2.6 3.9M6.6 6.6C4.4 8 2.8 10 2 12c1 3 5 7 10 7 1.6 0 3.1-.4 4.4-1"/></svg>`
+        :`<svg viewBox="0 0 24 24"><path d="M2 12c1-3 5-7 10-7s9 4 10 7c-1 3-5 7-10 7S3 15 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`}</button>`;
+  },
+
   vistaAhorro(){
     const key=this.mes;
     const P=cartera.posiciones(), V=cartera.valuar(P), D=V.dolar;
     const cls=v=>v==null?"":v>=0?"gain":"loss";
+    const O=this.ocultable(), money=O.money, usd=O.usd, moneyD=O.moneyD, cantidad=O.cantidad, signo=O.signo, pctS=O.pct;
     const hay=Object.keys(V.secciones).length>0||P.cerradas.length>0;
     this.refrescarPrecios(false);
 
@@ -2022,31 +2078,33 @@ const App={
       const gan=V.ganArs, acc=gan==null?"var(--brand-ink)":gan>=0?"var(--good-ink)":"var(--crit-ink)";
       const ganU=V.secciones.cripto&&V.secciones.cripto.completo?V.gananciaUsdCripto:null;
       h+=`<section class="hero" style="--hero-accent:${acc}">
-        <div class="lbl">Tu cartera vale</div>
+        <div class="lbl" style="display:flex;justify-content:space-between;align-items:center">Tu cartera vale ${this.botonOjo()}</div>
         <div class="big num">${D?money(V.totalArs):usd(V.totalUsd)}</div>
-        <div class="sub">${D?`≈ ${usd(V.totalUsd)} · dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} ${moneyD(D)}`:"Sin cotización del dólar todavía"}
-          · <button type="button" class="linkbtn" id="refrescarPrecios">${cartera.precios.cargando?"actualizando…":"actualizado "+cartera.hace(cartera.precios.ts)}</button></div>
-        <div class="miniflow">
+        ${D?`<div class="big2 num">${usd(V.totalUsd)}</div>`:""}
+        <div class="sub">${D?`Dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} ${O.moneyD(D)} · `:"Sin cotización del dólar · "}<button type="button" class="linkbtn" id="refrescarPrecios">${cartera.precios.cargando?"actualizando…":"actualizado "+cartera.hace(cartera.precios.ts)}</button></div>
+        <div class="miniflow tres">
           <div><span class="k">Aportaste</span><span class="v num">${money(V.costoArs)}</span></div>
-          <div><span class="k">Ganancia en $</span><span class="v num ${cls(gan)}">${gan==null?"—":signo(gan,money)}</span>
-            ${gan!=null&&V.costoArs>0?`<span class="s num ${cls(gan)}">${pctSigno(gan/V.costoArs*100)}</span>`:""}</div>
-          <div><span class="k">Ganancia en US$</span><span class="v num ${cls(ganU)}">${ganU==null?"—":signo(ganU,usd)}</span>
-            ${ganU!=null&&V.secciones.cripto.costoUsd>0?`<span class="s num ${cls(ganU)}">${pctSigno(ganU/V.secciones.cripto.costoUsd*100)}</span>`:""}</div>
+          <div><span class="k">Ganancia $</span><span class="v num ${cls(gan)}">${gan==null?"—":signo(gan,window.money)}</span>
+            ${gan!=null&&V.costoArs>0?`<span class="s num ${cls(gan)}">${pctS(gan/V.costoArs*100)}</span>`:""}</div>
+          <div><span class="k">Ganancia US$</span><span class="v num ${cls(ganU)}">${ganU==null?"—":signo(ganU,window.usd)}</span>
+            ${ganU!=null&&V.secciones.cripto.costoUsd>0?`<span class="s num ${cls(ganU)}">${pctS(ganU/V.secciones.cripto.costoUsd*100)}</span>`:""}</div>
         </div></section>`;
       if(V.sinPrecio.length) h+=`<div class="banner">Sin precio para ${V.sinPrecio.map(esc).join(", ")}. ${navigator.onLine?"Tocá “actualizado” para reintentar, o revisá el nombre de la moneda en la operación.":"Cuando tengas internet se actualiza solo."}</div>`;
       if(cartera.precios.error&&!D) h+=`<div class="banner">No pude traer las cotizaciones (${esc(cartera.precios.error)}). Los valores se muestran al costo.</div>`;
+      h+=this.graficoEvolucion("ars");
 
       const colorSec={cripto:"var(--c2)",usd:"var(--c3)",pesos:"var(--c4)"};
-      h+=`<section class="card"><div class="sechead"><h2 class="sec">Secciones</h2><button class="btn pri sm" id="nuevaOp">+ Operación</button></div><div class="catlist">`;
+      h+=`<section class="card"><div class="sechead"><h2 class="sec">Portfolio</h2><button class="btn pri sm" id="nuevaOp">+ Operación</button></div><div class="catlist">`;
       for(const k of ["cripto","usd","pesos"]){
         const s=V.secciones[k]; if(!s) continue;
         const g=k==="pesos"?null:s.ganArs, share=V.totalArs>0&&s.valArs!=null?s.valArs/V.totalArs*100:0;
-        const sub=k==="cripto"?s.filas.map(f=>f.sym).join(" · "):k==="usd"?cantidad(s.cant)+" US$"+(s.pendientes.length?" · falta una cotización":""):s.filas.map(f=>f.nombre).join(" · ");
+        const sub=k==="cripto"?`${s.filas.length} moneda${s.filas.length===1?"":"s"}`:k==="usd"?cantidad(s.cant)+" US$"+(s.pendientes.length?" · falta una cotización":""):s.filas.map(f=>f.nombre).join(" · ");
         h+=`<button type="button" class="catrow secrow" data-sec="${k}">
           <span class="cathead"><span class="catname"><i class="dot" style="background:${colorSec[k]}"></i><span><b>${s.nombre}</b><small class="secsub">${esc(sub)}</small></span></span>
             <span class="catnums"><span class="a num">${s.valArs!=null?money(s.valArs):usd(s.valUsd)}</span>
-              <span class="b num ${cls(g)}">${g!=null?signo(g,money):(s.valUsd!=null&&D&&k!=="pesos"?usd(s.valUsd):"")}</span></span></span>
-          <span class="meter"><i style="width:${share}%;background:${colorSec[k]}"></i></span></button>`;
+              <span class="b num">${s.valUsd!=null&&D?usd(s.valUsd):""}</span></span></span>
+          <span class="meter"><i style="width:${share}%;background:${colorSec[k]}"></i></span>
+          <span class="secmeta"><b class="num">${this.priv?"••":pct(share)}</b> del portfolio${g!=null?` · <span class="num ${cls(g)}">${signo(g,window.money)}</span>`:""}</span></button>`;
       }
       h+=`</div></section>`;
     }
@@ -2064,43 +2122,56 @@ const App={
 
   vistaSeccionAhorro(sec,P,V){
     const D=V.dolar, s=V.secciones[sec], cls=v=>v==null?"":v>=0?"gain":"loss";
-    let h=`<button type="button" class="volver" id="volverAhorro">‹ Ahorro</button>`;
+    const O=this.ocultable(), money=O.money, usd=O.usd, moneyD=O.moneyD, cantidad=O.cantidad, signo=O.signo, pctS=O.pct;
+    let h=`<div style="display:flex;justify-content:space-between;align-items:center"><button type="button" class="volver" id="volverAhorro">‹ Ahorro</button>${this.botonOjo()}</div>`;
 
     if(sec==="cripto"){
       const fx=D?s.costoUsd*D-s.costoArs:null, g=s.ganArs;
+      /* variación de las últimas 24 h a partir del cambio diario de cada moneda */
+      let v24=0, base24=0, hay24=false;
+      for(const f of s.filas) if(f.px!=null&&f.ch!=null){ const antes=f.valUsd/(1+f.ch/100); v24+=f.valUsd-antes; base24+=antes; hay24=true; }
       h+=`<section class="hero" style="--hero-accent:${g==null?"var(--brand-ink)":g>=0?"var(--good-ink)":"var(--crit-ink)"}">
         <div class="lbl">Cripto</div><div class="big num">${usd(s.valUsd)}</div>
-        <div class="sub">${D?`≈ ${money(s.valArs)} · pusiste ${usd(s.costoUsd)} (${money(s.costoArs)})`:`pusiste ${usd(s.costoUsd)}`}</div>
-        <div class="miniflow">
-          <div><span class="k">Por la cripto</span><span class="v num ${cls(s.ganUsd)}">${s.ganUsd==null?"—":signo(s.ganUsd,usd)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctSigno(s.ganUsd/s.costoUsd*100)}</span>`:""}</div>
-          <div><span class="k">Por el dólar</span><span class="v num ${cls(fx)}">${fx==null?"—":signo(fx,money)}</span></div>
-          <div><span class="k">Total en $</span><span class="v num ${cls(g)}">${g==null?"—":signo(g,money)}</span>${g!=null&&s.costoArs>0?`<span class="s num ${cls(g)}">${pctSigno(g/s.costoArs*100)}</span>`:""}</div>
+        ${D?`<div class="big2 num">${money(s.valArs)}</div>`:""}
+        <div class="sub">${hay24?`24 h: <b class="${cls(v24)}">${signo(v24,window.usd)}${base24>0?" ("+pctS(v24/base24*100)+")":""}</b> · `:""}actualizado ${cartera.hace(cartera.precios.ts)}</div>
+        <div class="miniflow tres">
+          <div><span class="k">Pusiste</span><span class="v num">${usd(s.costoUsd)}</span>${D?`<span class="s num">${money(s.costoArs)}</span>`:""}</div>
+          <div><span class="k">Por la cripto</span><span class="v num ${cls(s.ganUsd)}">${s.ganUsd==null?"—":signo(s.ganUsd,window.usd)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctS(s.ganUsd/s.costoUsd*100)}</span>`:""}</div>
+          <div><span class="k">Total en $</span><span class="v num ${cls(g)}">${g==null?"—":signo(g,window.money)}</span>${fx!=null?`<span class="s num ${cls(fx)}">${signo(fx,window.money)} por el dólar</span>`:""}</div>
         </div></section>`;
-      if(s.filas.length>1){
-        const items=s.filas.map((f,i)=>({id:null,nombre:f.sym,monto:f.valUsd,color:colorDe(i)}));
-        h+=`<section class="card">${this.donut(items,s.valUsd,"Cripto",usd(s.valUsd),"")}</section>`;
-      }
-      h+=`<section class="card"><div class="sechead"><h2 class="sec">Monedas</h2><span class="eyebrow">${s.filas.length}</span></div><div class="catlist">`
-        + s.filas.map((f,i)=>`<div class="catrow"><div class="cathead">
-            <span class="catname"><i class="dot" style="background:${colorDe(i)}"></i><span><b>${esc(f.sym)}</b>
-              <small class="secsub">${cantidad(f.cant)} ${esc(f.sym)}${f.px!=null?` · ${usd(f.px)} c/u${f.ch!=null?` · <span class="${cls(f.ch)}">${pctSigno(f.ch)} hoy</span>`:""}`:" · sin precio"}</small></span></span>
-            <span class="catnums"><span class="a num">${usd(f.valUsd)}</span><span class="b num">${D?money(f.valArs):""}</span></span></div>
-          <div class="kpis">
-            <div><span class="k">Pusiste</span><span class="num">${usd(f.costoUsd)}</span><span class="num s">${money(f.costoArs)}</span></div>
-            <div><span class="k">Por la cripto</span><span class="num ${cls(f.ganUsd)}">${f.ganUsd==null?"—":signo(f.ganUsd,usd)}</span><span class="num s">${f.costoUsd>0&&f.ganUsd!=null?pctSigno(f.ganUsd/f.costoUsd*100):""}</span></div>
-            <div><span class="k">Por el dólar</span><span class="num ${cls(f.ganFx)}">${f.ganFx==null?"—":signo(f.ganFx,money)}</span></div>
-            <div><span class="k">Total en $</span><span class="num ${cls(f.ganArs)}">${f.ganArs==null?"—":signo(f.ganArs,money)}</span><span class="num s">${f.costoArs>0&&f.ganArs!=null?pctSigno(f.ganArs/f.costoArs*100):""}</span></div>
-          </div></div>`).join("")+`</div></section>`;
+      h+=this.graficoEvolucion("usd");
+
+      /* tabla de monedas, estilo tracker: activo · precio · tenés/valor */
+      h+=`<section class="card"><div class="sechead"><h2 class="sec">Monedas</h2><span class="eyebrow">${s.filas.length}</span></div>
+        <div class="tabla"><div class="th"><span>Activo</span><span>Precio</span><span>Tenés</span></div>`
+        + s.filas.slice().sort((a,b)=>b.valUsd-a.valUsd).map((f,i)=>{
+          const abierta=!!this.abiertas["coin:"+f.sym];
+          return `<button type="button" class="tr" data-coin="${esc(f.sym)}" aria-expanded="${abierta}">
+            <span class="c1"><i class="dot" style="background:${colorDe(i)}"></i><span><b>${esc(f.sym)}</b><small>${s.valUsd>0?pct(f.valUsd/s.valUsd*100):""}</small></span></span>
+            <span class="c2 num"><b>${f.px!=null?window.usd(f.px):"—"}</b><small class="${cls(f.ch)}">${f.ch!=null?pctSigno(f.ch):""}</small></span>
+            <span class="c3 num"><b>${usd(f.valUsd)}</b><small>${cantidad(f.cant)} ${esc(f.sym)}</small><small class="${cls(f.ganUsd)}">${f.ganUsd==null?"":signo(f.ganUsd,window.usd)+(f.costoUsd>0?" ("+pctS(f.ganUsd/f.costoUsd*100)+")":"")}</small></span>
+          </button>
+          ${abierta?`<div class="coindet">
+            <div class="kpis tres">
+              <div><span class="k">Pagaste</span><span class="num">${f.cant>0?window.usd(f.costoUsd/f.cant):"—"}</span><span class="num s">por unidad</span></div>
+              <div><span class="k">Pusiste</span><span class="num">${usd(f.costoUsd)}</span><span class="num s">${money(f.costoArs)}</span></div>
+              <div><span class="k">Vale en $</span><span class="num">${D?money(f.valArs):"—"}</span></div>
+              <div><span class="k">Por la cripto</span><span class="num ${cls(f.ganUsd)}">${f.ganUsd==null?"—":signo(f.ganUsd,window.usd)}</span><span class="num s ${cls(f.ganUsd)}">${f.costoUsd>0&&f.ganUsd!=null?pctS(f.ganUsd/f.costoUsd*100):""}</span></div>
+              <div><span class="k">Por el dólar</span><span class="num ${cls(f.ganFx)}">${f.ganFx==null?"—":signo(f.ganFx,window.money)}</span></div>
+              <div><span class="k">Total en $</span><span class="num ${cls(f.ganArs)}">${f.ganArs==null?"—":signo(f.ganArs,window.money)}</span><span class="num s ${cls(f.ganArs)}">${f.costoArs>0&&f.ganArs!=null?pctS(f.ganArs/f.costoArs*100):""}</span></div>
+            </div></div>`:""}`;
+        }).join("")+`</div></section>`;
     }
     else if(sec==="usd"){
       const g=s.ganArs;
       h+=`<section class="hero" style="--hero-accent:${g==null?"var(--brand-ink)":g>=0?"var(--good-ink)":"var(--crit-ink)"}">
         <div class="lbl">Dólares sin invertir</div><div class="big num">${usd(s.cant)}</div>
-        <div class="sub">${D?`≈ ${money(s.valArs)} al dólar de hoy (${moneyD(D)})`:"Sin cotización del dólar"}</div>
-        <div class="miniflow">
+        ${D?`<div class="big2 num">${money(s.valArs)}</div>`:""}
+        <div class="sub">${D?`Al dólar de hoy (${O.moneyD(D)})`:"Sin cotización del dólar"}</div>
+        <div class="miniflow tres">
           <div><span class="k">Te costaron</span><span class="v num">${money(s.costoArs)}</span></div>
-          <div><span class="k">Tu dólar promedio</span><span class="v num">${s.tcProm?moneyD(s.tcProm):"—"}</span></div>
-          <div><span class="k">Por el dólar</span><span class="v num ${cls(g)}">${g==null?"—":signo(g,money)}</span>${g!=null&&s.costoArs>0?`<span class="s num ${cls(g)}">${pctSigno(g/s.costoArs*100)}</span>`:""}</div>
+          <div><span class="k">Tu dólar promedio</span><span class="v num">${s.tcProm?O.moneyD(s.tcProm):"—"}</span></div>
+          <div><span class="k">Por el dólar</span><span class="v num ${cls(g)}">${g==null?"—":signo(g,window.money)}</span>${g!=null&&s.costoArs>0?`<span class="s num ${cls(g)}">${pctS(g/s.costoArs*100)}</span>`:""}</div>
         </div></section>`;
       if(s.pendientes.length) h+=`<section class="card"><div class="banner">Hay compras de dólares sin cotización. Sin ese dato no sé cuántos dólares son.</div>
         <div class="movs">${s.pendientes.map(o=>`<button type="button" class="mov" data-op="${o.id}"><span class="bar" style="background:var(--warn)"></span>
@@ -2108,7 +2179,8 @@ const App={
     }
     else{
       h+=`<section class="hero" style="--hero-accent:var(--brand-ink)"><div class="lbl">En pesos</div><div class="big num">${money(s.valArs)}</div>
-        <div class="sub">${D?`≈ ${usd(s.valUsd)}`:""} Plazo fijo, efectivo guardado y similares, al valor que cargaste.</div></section>
+        ${D?`<div class="big2 num">${usd(s.valUsd)}</div>`:""}
+        <div class="sub">Plazo fijo, efectivo guardado y similares, al valor que cargaste.</div></section>
         <section class="card"><div class="catlist">${s.filas.map((f,i)=>`<div class="catrow"><div class="cathead">
           <span class="catname"><i class="dot" style="background:${colorDe(i+3)}"></i><b>${esc(f.nombre)}</b></span>
           <span class="catnums"><span class="a num">${money(f.ars)}</span><span class="b num">${s.valArs>0?pct(f.ars/s.valArs*100):""}</span></span></div></div>`).join("")}</div></section>`;
@@ -2117,8 +2189,35 @@ const App={
     return h;
   },
 
+  /* evolución del valor de la cartera: un punto por día, guardado al actualizar precios */
+  graficoEvolucion(moneda){
+    const hist=(cartera.d.hist||[]).slice(-180);
+    if(hist.length<2) return "";
+    const vals=hist.map(p=>moneda==="usd"?p.usd:p.ars).map(Number);
+    const min=Math.min(...vals), max=Math.max(...vals), span=(max-min)||1;
+    const W=320,H=110,PL=6,PR=6,PT=10,PB=18;
+    const x=i=>PL+(W-PL-PR)*(hist.length===1?0:i/(hist.length-1)), y=v=>PT+(H-PT-PB)*(1-(v-min)/span);
+    const pts=vals.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const area=`M${x(0).toFixed(1)},${(H-PB).toFixed(1)} L${pts.replace(/ /g," L")} L${x(vals.length-1).toFixed(1)},${(H-PB).toFixed(1)} Z`;
+    const ult=vals[vals.length-1], pri=vals[0], dif=ult-pri, sube=dif>=0, col=sube?"var(--good)":"var(--crit)";
+    const f=moneda==="usd"?usd:money, O=this.ocultable();
+    const fecha=d=>{ const p=String(d).split("-"); return Number(p[2])+" "+MESES_CORTO[Number(p[1])-1]; };
+    return `<section class="card"><div class="sechead"><h2 class="sec">Evolución</h2>
+        <span class="eyebrow num ${sube?"gain":"loss"}">${this.priv?"••••":signo(dif,f)}${pri>0&&!this.priv?" · "+pctSigno(dif/pri*100):""}</span></div>
+      <svg viewBox="0 0 ${W} ${H}" class="evo" role="img" aria-label="Evolución de la cartera">
+        <line x1="${PL}" y1="${PT}" x2="${W-PR}" y2="${PT}" class="g"/><line x1="${PL}" y1="${(H-PB)}" x2="${W-PR}" y2="${(H-PB)}" class="g"/>
+        <path d="${area}" fill="${col}" opacity=".12"/>
+        <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="${x(vals.length-1)}" cy="${y(ult)}" r="3.5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
+        <text x="${PL}" y="${H-4}" class="t">${fecha(hist[0].d)}</text><text x="${W-PR}" y="${H-4}" class="t" text-anchor="end">${fecha(hist[hist.length-1].d)}</text>
+        <text x="${W-PR}" y="${PT-2}" class="t" text-anchor="end">${this.priv?"••••":f(max)}</text>
+      </svg>
+      <p class="hint" style="margin:6px 0 0">Un punto por día desde que empezaste a usar la cartera. ${hist.length} día${hist.length===1?"":"s"}.</p></section>`;
+  },
+
   bloqueCerradas(P,V){
     const D=V.dolar, cls=v=>v==null?"":v>=0?"gain":"loss";
+    const O=this.ocultable(), money=O.money, usd=O.usd, signo=O.signo, pctSigno=O.pct;
     const lista=P.cerradas.slice().reverse();
     return `<section class="card"><div class="sechead"><h2 class="sec">Operaciones cerradas</h2><span class="eyebrow">${lista.length}</span></div>
       <p class="hint" style="margin:-4px 0 10px">Ganancia de cada venta contra tu costo promedio en ese momento.</p>
@@ -2133,6 +2232,7 @@ const App={
   },
 
   bloqueOperaciones(P,sec){
+    const O=this.ocultable(), money=O.money, usd=O.usd, moneyD=O.moneyD, cantidad=O.cantidad;
     const filtro={cripto:["usd_cripto","cripto_usd"],usd:["ars_usd","usd_ars"],pesos:["ars_pesos","pesos_ars"]}[sec]||null;
     const ops=cartera.opsOrdenadas().reverse().filter(o=>!filtro||filtro.includes(o.tipo));
     const res=o=>{
@@ -2502,6 +2602,8 @@ const App={
     v.querySelectorAll("[data-sec]").forEach(b=>b.onclick=()=>{ this.ahorroSec=b.dataset.sec; this.render(); window.scrollTo({top:0,behavior:"smooth"}); });
     const va=$("#volverAhorro"); if(va) va.onclick=()=>{ this.ahorroSec=null; this.render(); };
     const rp=$("#refrescarPrecios"); if(rp) rp.onclick=()=>this.refrescarPrecios(true);
+    const ojo=$("#ojoPriv"); if(ojo) ojo.onclick=()=>{ this.priv=!this.priv; this.render(); };
+    v.querySelectorAll("[data-coin]").forEach(b=>b.onclick=()=>{ const k="coin:"+b.dataset.coin; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     const selD=$("#selDolar"); if(selD) selD.onchange=()=>{ cartera.d.dolar=selD.value; cartera.precios.ts=0; store.guardarConfig(); this.refrescarPrecios(true); };
     /* desde la vista de tortas, tocar una categoría lleva a su detalle abierto */
     v.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
