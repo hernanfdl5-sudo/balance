@@ -328,6 +328,21 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .alrow .r.crit{background:var(--crit-soft);color:var(--crit-ink)}
 .subedit{display:flex;gap:6px;align-items:center}
 .subedit input{flex:1}
+/* cartera */
+.gain{color:var(--good-ink)} .loss{color:var(--crit-ink)}
+.linkbtn{color:var(--brand-ink);font-weight:600;font-size:inherit;text-decoration:underline dotted;padding:0}
+.secsub{display:block;font-size:11px;color:var(--ink-3);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.secrow{display:block;width:100%;text-align:left}
+.secrow .cathead{display:flex} .secrow .meter{display:block}
+.secrow .catname>span{min-width:0}
+.miniflow .s{font-size:11px;font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:9px 12px;margin-top:11px;padding-top:11px;border-top:1px dashed var(--line-2)}
+.kpis>div{display:flex;flex-direction:column;gap:1px;min-width:0}
+.kpis .k{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+.kpis .num{font-size:13.5px;font-weight:600}
+.kpis .s{font-size:11px;color:var(--ink-3);font-weight:500}
+.volver{color:var(--brand-ink);font-weight:600;font-size:14px;padding:2px 0;align-self:flex-start;margin-bottom:-6px}
+.mov .amt small{font-size:11px;font-weight:600;margin-left:3px}
 .proyline{display:flex;gap:24px;justify-content:center;margin-top:10px;text-align:center}
 .proyline .k{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
 .proyline b{font-size:17px;font-weight:700}
@@ -364,7 +379,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260923-090630 -->
+<!-- build 20260924-180336 -->
 
 <div id="shell">
   <header id="topbar">
@@ -766,6 +781,144 @@ const calc={
   }
 };
 
+/* ============================ cartera (ahorro) ============================
+   Operaciones encadenadas: pesos → dólares → cripto, y la vuelta. Cada posición
+   arrastra su costo en pesos y en dólares para poder separar la ganancia
+   "por la cripto" de la ganancia "por el dólar". */
+
+const MONEDAS_DEF={BTC:"bitcoin",ETH:"ethereum",USDT:"tether",USDC:"usd-coin",SOL:"solana",BNB:"binancecoin",XRP:"ripple",
+  ADA:"cardano",DOGE:"dogecoin",DOT:"polkadot",AVAX:"avalanche-2",LINK:"chainlink",LTC:"litecoin",TRX:"tron",DAI:"dai",
+  POL:"polygon-ecosystem-token",MATIC:"matic-network",TON:"the-open-network",SHIB:"shiba-inu",ATOM:"cosmos",UNI:"uniswap",
+  XLM:"stellar",BCH:"bitcoin-cash",NEAR:"near",ARB:"arbitrum",OP:"optimism",PEPE:"pepe",AAVE:"aave",SUI:"sui",APT:"aptos",
+  HBAR:"hedera-hashgraph",FIL:"filecoin",ETC:"ethereum-classic",RENDER:"render-token",INJ:"injective-protocol"};
+const TIPOS_OP={
+  ars_usd:"Compré dólares con pesos", usd_cripto:"Compré cripto con dólares", cripto_usd:"Vendí cripto (a dólares)",
+  usd_ars:"Vendí dólares (a pesos)", ars_pesos:"Plazo fijo / pesos guardados", pesos_ars:"Retiré pesos guardados"
+};
+const fmtUsd=new Intl.NumberFormat("es-AR",{style:"currency",currency:"USD",minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtArsD=new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",minimumFractionDigits:2,maximumFractionDigits:2});
+function usd(n){ return fmtUsd.format(Number(n)||0); }
+function moneyD(n){ return fmtArsD.format(Number(n)||0); }
+function cantidad(n){ n=Number(n)||0; return n.toLocaleString("es-AR",{maximumFractionDigits:Math.abs(n)>=1?4:8}); }
+function signo(n,f){ n=Number(n)||0; return (n>0?"+":n<0?"−":"")+f(Math.abs(n)); }
+function pctSigno(n){ n=Number(n)||0; return (n>0?"+":n<0?"−":"")+pct(Math.abs(n)); }
+
+const cartera={
+  get d(){
+    const c=store.config;
+    if(!c.cartera||typeof c.cartera!=="object") c.cartera={};
+    const k=c.cartera;
+    if(!Array.isArray(k.ops)) k.ops=[];
+    if(!k.monedas) k.monedas={};
+    if(!k.dolar) k.dolar="cripto";
+    return k;
+  },
+  precios:{cripto:{},dolar:null,dolarNombre:"",ts:0,error:null,cargando:false},
+  idDe(sym){ sym=String(sym||"").toUpperCase().trim(); return this.d.monedas[sym]||MONEDAS_DEF[sym]||null; },
+  cargarCache(){ try{ const p=JSON.parse(localStorage.getItem("bp_precios")||"null"); if(p&&p.cripto){ this.precios={...this.precios,...p,cargando:false}; } }catch(e){} },
+  guardarCache(){ try{ const {cargando,...p}=this.precios; localStorage.setItem("bp_precios",JSON.stringify(p)); }catch(e){} },
+  precioDe(sym){ const id=this.idDe(sym); const p=id?this.precios.cripto[id]:null; return p?p.usd:null; },
+  cambio24(sym){ const id=this.idDe(sym); const p=id?this.precios.cripto[id]:null; return p&&typeof p.ch==="number"?p.ch:null; },
+  opsOrdenadas(){ return this.d.ops.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))||String(a.id).localeCompare(String(b.id))); },
+
+  /* Recorre las operaciones en orden y arma las posiciones abiertas y las cerradas.
+     Costo promedio ponderado; los dólares que compran cripto le pasan a la cripto su costo en pesos. */
+  posiciones(){
+    const P={usd:{cant:0,costoArs:0},cripto:{},pesos:{},cerradas:[],aportadoArs:0,retiradoArs:0,pendientes:[]};
+    const cr=s=>P.cripto[s]||(P.cripto[s]={sym:s,cant:0,costoUsd:0,costoArs:0});
+    for(const o of this.opsOrdenadas()){
+      const ars=Number(o.ars)||0, u=Number(o.usd)||0, q=Number(o.cant)||0;
+      switch(o.tipo){
+        case "ars_usd":
+          if(!(u>0)){ P.pendientes.push(o); P.aportadoArs+=ars; break; }
+          P.usd.cant+=u; P.usd.costoArs+=ars; P.aportadoArs+=ars; break;
+        case "usd_ars":{
+          const prom=P.usd.cant>0?P.usd.costoArs/P.usd.cant:0, costo=prom*u;
+          P.usd.cant-=u; P.usd.costoArs-=costo; P.retiradoArs+=ars;
+          P.cerradas.push({op:o,det:`${cantidad(u)} US$ → pesos`,gananciaArs:ars-costo,base:costo}); break; }
+        case "usd_cripto":{
+          const c=cr(o.activo), prom=P.usd.cant>0?P.usd.costoArs/P.usd.cant:(o.tc?Number(o.tc):0), costoArs=prom*u;
+          c.cant+=q; c.costoUsd+=u; c.costoArs+=costoArs;
+          P.usd.cant-=u; P.usd.costoArs-=Math.min(costoArs,P.usd.costoArs); break; }
+        case "cripto_usd":{
+          const c=cr(o.activo);
+          const promU=c.cant>0?c.costoUsd/c.cant:0, promA=c.cant>0?c.costoArs/c.cant:0;
+          const costoU=promU*q, costoA=promA*q;
+          c.cant-=q; c.costoUsd-=costoU; c.costoArs-=costoA;
+          P.usd.cant+=u; P.usd.costoArs+=costoA; /* la ganancia en pesos se realiza recién al vender los dólares */
+          P.cerradas.push({op:o,det:`${cantidad(q)} ${o.activo} → ${usd(u)}`,gananciaUsd:u-costoU,base:costoU,costoArs:costoA}); break; }
+        case "ars_pesos":{
+          const p=P.pesos[o.activo]||(P.pesos[o.activo]={nombre:o.activo,ars:0});
+          p.ars+=ars; P.aportadoArs+=ars; break; }
+        case "pesos_ars":{
+          const p=P.pesos[o.activo]; if(p) p.ars-=ars; P.retiradoArs+=ars; break; }
+      }
+    }
+    for(const s in P.cripto) if(P.cripto[s].cant<=1e-12) delete P.cripto[s];
+    for(const s in P.pesos) if(P.pesos[s].ars<=0.5) delete P.pesos[s];
+    if(P.usd.cant<1e-9){ P.usd.cant=0; P.usd.costoArs=0; }
+    return P;
+  },
+
+  /* valuación a precios de hoy */
+  valuar(P){
+    const D=this.precios.dolar||null;
+    const V={dolar:D,secciones:{},totalArs:0,totalUsd:0,costoArs:0,gananciaUsdCripto:0,sinPrecio:[]};
+    const filas=[]; let crUsd=0,crCostoU=0,crCostoA=0,crVal=true;
+    for(const s of Object.keys(P.cripto).sort()){
+      const c=P.cripto[s], px=this.precioDe(s);
+      if(px==null){ V.sinPrecio.push(s); crVal=false; }
+      const valUsd=px!=null?c.cant*px:c.costoUsd;
+      const f={...c,px,valUsd,ch:this.cambio24(s),
+        ganUsd:px!=null?valUsd-c.costoUsd:null,
+        valArs:D?valUsd*D:null, ganArs:D?valUsd*D-c.costoArs:null,
+        ganFx:D?c.costoUsd*D-c.costoArs:null, ganCripto:(D&&px!=null)?(valUsd-c.costoUsd)*D:null};
+      filas.push(f); crUsd+=valUsd; crCostoU+=c.costoUsd; crCostoA+=c.costoArs;
+    }
+    if(filas.length){
+      V.secciones.cripto={nombre:"Cripto",filas,valUsd:crUsd,costoUsd:crCostoU,costoArs:crCostoA,valArs:D?crUsd*D:null,completo:crVal,
+        ganUsd:crVal?crUsd-crCostoU:null,ganArs:(D&&crVal)?crUsd*D-crCostoA:null};
+      V.gananciaUsdCripto=crVal?crUsd-crCostoU:0;
+    }
+    if(P.usd.cant>0||P.pendientes.length){
+      const tc=P.usd.cant>0?P.usd.costoArs/P.usd.cant:0;
+      V.secciones.usd={nombre:"Dólares",cant:P.usd.cant,costoArs:P.usd.costoArs,tcProm:tc,valUsd:P.usd.cant,
+        valArs:D?P.usd.cant*D:null,ganArs:D?P.usd.cant*D-P.usd.costoArs:null,pendientes:P.pendientes};
+    }
+    const pes=Object.values(P.pesos);
+    if(pes.length){ const t=pes.reduce((s,p)=>s+p.ars,0); V.secciones.pesos={nombre:"Pesos",filas:pes,valArs:t,valUsd:D?t/D:null}; }
+    for(const k in V.secciones){ const s=V.secciones[k]; V.totalArs+=s.valArs||0; V.totalUsd+=s.valUsd||0; }
+    V.costoArs=(V.secciones.cripto?V.secciones.cripto.costoArs:0)+(V.secciones.usd?V.secciones.usd.costoArs:0)+(V.secciones.pesos?V.secciones.pesos.valArs:0);
+    V.ganArs=D?V.totalArs-V.costoArs:null;
+    return V;
+  },
+
+  async actualizar(forzar){
+    if(this.precios.cargando) return false;
+    if(!forzar&&Date.now()-(this.precios.ts||0)<5*60*1000) return false;
+    const P=this.posiciones();
+    const ids=[...new Set(Object.keys(P.cripto).map(s=>this.idDe(s)).filter(Boolean))];
+    this.precios.cargando=true;
+    try{
+      const [rc,rd]=await Promise.all([
+        ids.length?fetch("https://api.coingecko.com/api/v3/simple/price?ids="+ids.join(",")+"&vs_currencies=usd&include_24hr_change=true"):Promise.resolve(null),
+        fetch("https://dolarapi.com/v1/dolares/"+encodeURIComponent(this.d.dolar))
+      ]);
+      if(rc&&rc.ok){ const j=await rc.json(); for(const id in j) this.precios.cripto[id]={usd:Number(j[id].usd),ch:Number(j[id].usd_24h_change)}; }
+      if(rd&&rd.ok){ const j=await rd.json(); const v=Number(j.venta)||Number(j.compra); if(v>0){ this.precios.dolar=v; this.precios.dolarNombre=j.nombre||this.d.dolar; } }
+      this.precios.ts=Date.now(); this.precios.error=null; this.guardarCache(); return true;
+    }catch(e){ this.precios.error="sin conexión"; return false; }
+    finally{ this.precios.cargando=false; }
+  },
+  async buscarMoneda(q){
+    try{
+      const r=await fetch("https://api.coingecko.com/api/v3/search?query="+encodeURIComponent(q)); const j=await r.json();
+      return (j.coins||[]).slice(0,6).map(c=>({id:c.id,sym:String(c.symbol||"").toUpperCase(),nombre:c.name}));
+    }catch(e){ return []; }
+  },
+  hace(ts){ if(!ts) return "nunca"; const m=Math.round((Date.now()-ts)/60000); return m<1?"recién":m<60?`hace ${m} min`:m<1440?`hace ${Math.round(m/60)} h`:`hace ${Math.round(m/1440)} d`; }
+};
+
 /* ============================ intérprete ============================ */
 
 const UNIDADES={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,
@@ -1097,6 +1250,8 @@ const App={
     store.listos=true;
     this.modoPropio=!store.usaDb;
     if(this.modoPropio) this.iniciarPWA();
+    cartera.cargarCache();
+    this.migrarCartera();
     if(!store.mes(this.mes)&&this.mes<=mesKey(new Date())) store.ensureMes(this.mes);
     this.render(); this.conectarVoz();
     try{ this.sample=await ((window.claude&&window.claude.use)?window.claude.use("sample"):null); }catch(e){ this.sample=null; }
@@ -1848,57 +2003,299 @@ const App={
 
   /* ---------------------------------------------------------------- AHORRO */
   vistaAhorro(){
-    const key=this.mes, mesInv=calc.invertido(key), acum=calc.ahorroAcumulado();
-    const instr=calc.porInstrumento(), serie=calc.serie(key,12,k=>calc.invertido(k));
-    const ing=calc.ingresos(key), tasa=ing>0?mesInv/ing*100:null;
+    const key=this.mes;
+    const P=cartera.posiciones(), V=cartera.valuar(P), D=V.dolar;
+    const cls=v=>v==null?"":v>=0?"gain":"loss";
+    const hay=Object.keys(V.secciones).length>0||P.cerradas.length>0;
+    this.refrescarPrecios(false);
 
-    let h=`<section class="hero" style="--hero-accent:var(--brand-ink)">
-      <div class="lbl">Ahorraste este mes</div>
-      <div class="big num">${money(mesInv)}</div>
-      <div class="sub">${tasa!==null?`${pct(tasa)} de tus ingresos de ${MESES[Number(key.split("-")[1])-1].toLowerCase()}`
-        :"Cargá tus ingresos para ver qué porcentaje representa"}</div>
-      <div class="miniflow">
-        <div><span class="k">Acumulado</span><span class="v num">${money(acum)}</span></div>
-        <div><span class="k">Destinos</span><span class="v num">${instr.length}</span></div>
-        <div><span class="k">Promedio</span><span class="v num">${money(this.promedioAhorro())}</span></div>
-      </div></section>`;
+    if(this.ahorroSec&&V.secciones[this.ahorroSec]) return this.vistaSeccionAhorro(this.ahorroSec,P,V);
+    this.ahorroSec=null;
 
-    if(serie.some(s=>s.valor>0))
-      h+=`<section class="card"><div class="sechead"><h2 class="sec">Ahorro mes a mes</h2>
-        <span class="eyebrow">últimos 12</span></div>${this.barrasVerticales(serie,key,"var(--brand)")}</section>`;
+    let h="";
+    if(!hay){
+      h+=`<section class="hero" style="--hero-accent:var(--brand-ink)"><div class="lbl">Tu cartera</div><div class="big num">${money(0)}</div>
+        <div class="sub">Todavía no cargaste ninguna operación.</div></section>
+        <section class="card"><div class="empty"><b>Empezá por la primera compra</b>Lo habitual: comprás dólares con pesos y con esos dólares comprás cripto. Cada paso es una operación.</div>
+        <button class="btn pri full" id="nuevaOp">+ Nueva operación</button></section>`;
+    }else{
+      const gan=V.ganArs, acc=gan==null?"var(--brand-ink)":gan>=0?"var(--good-ink)":"var(--crit-ink)";
+      const ganU=V.secciones.cripto&&V.secciones.cripto.completo?V.gananciaUsdCripto:null;
+      h+=`<section class="hero" style="--hero-accent:${acc}">
+        <div class="lbl">Tu cartera vale</div>
+        <div class="big num">${D?money(V.totalArs):usd(V.totalUsd)}</div>
+        <div class="sub">${D?`≈ ${usd(V.totalUsd)} · dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} ${moneyD(D)}`:"Sin cotización del dólar todavía"}
+          · <button type="button" class="linkbtn" id="refrescarPrecios">${cartera.precios.cargando?"actualizando…":"actualizado "+cartera.hace(cartera.precios.ts)}</button></div>
+        <div class="miniflow">
+          <div><span class="k">Aportaste</span><span class="v num">${money(V.costoArs)}</span></div>
+          <div><span class="k">Ganancia en $</span><span class="v num ${cls(gan)}">${gan==null?"—":signo(gan,money)}</span>
+            ${gan!=null&&V.costoArs>0?`<span class="s num ${cls(gan)}">${pctSigno(gan/V.costoArs*100)}</span>`:""}</div>
+          <div><span class="k">Ganancia en US$</span><span class="v num ${cls(ganU)}">${ganU==null?"—":signo(ganU,usd)}</span>
+            ${ganU!=null&&V.secciones.cripto.costoUsd>0?`<span class="s num ${cls(ganU)}">${pctSigno(ganU/V.secciones.cripto.costoUsd*100)}</span>`:""}</div>
+        </div></section>`;
+      if(V.sinPrecio.length) h+=`<div class="banner">Sin precio para ${V.sinPrecio.map(esc).join(", ")}. ${navigator.onLine?"Tocá “actualizado” para reintentar, o revisá el nombre de la moneda en la operación.":"Cuando tengas internet se actualiza solo."}</div>`;
+      if(cartera.precios.error&&!D) h+=`<div class="banner">No pude traer las cotizaciones (${esc(cartera.precios.error)}). Los valores se muestran al costo.</div>`;
 
-    if(instr.length){
-      const tot=instr.reduce((s,i)=>s+i.monto,0);
-      const items=instr.map((s,i)=>({id:null,nombre:s.nombre,monto:s.monto,color:colorDe(i)}));
-      h+=`<section class="card"><div class="sechead"><h2 class="sec">Dónde está la plata</h2>
-          <span class="eyebrow">acumulado</span></div>
-        ${this.donut(items,tot,"Ahorrado",money(tot),"desde el inicio")}
-        <div class="catlist" style="margin-top:8px">`
-        + instr.map((s,i)=>`<div class="catrow"><div class="cathead">
-            <span class="catname"><i class="dot" style="background:${colorDe(i)}"></i><b>${esc(s.nombre)}</b></span>
-            <span class="catnums"><span class="a num">${money(s.monto)}</span>
-              <span class="b num">${pct(s.monto/tot*100)}</span></span></div>
-          <div class="meter"><i style="width:${s.monto/instr[0].monto*100}%;background:${colorDe(i)}"></i></div>
-        </div>`).join("")+`</div></section>`;
+      const colorSec={cripto:"var(--c2)",usd:"var(--c3)",pesos:"var(--c4)"};
+      h+=`<section class="card"><div class="sechead"><h2 class="sec">Secciones</h2><button class="btn pri sm" id="nuevaOp">+ Operación</button></div><div class="catlist">`;
+      for(const k of ["cripto","usd","pesos"]){
+        const s=V.secciones[k]; if(!s) continue;
+        const g=k==="pesos"?null:s.ganArs, share=V.totalArs>0&&s.valArs!=null?s.valArs/V.totalArs*100:0;
+        const sub=k==="cripto"?s.filas.map(f=>f.sym).join(" · "):k==="usd"?cantidad(s.cant)+" US$"+(s.pendientes.length?" · falta una cotización":""):s.filas.map(f=>f.nombre).join(" · ");
+        h+=`<button type="button" class="catrow secrow" data-sec="${k}">
+          <span class="cathead"><span class="catname"><i class="dot" style="background:${colorSec[k]}"></i><span><b>${s.nombre}</b><small class="secsub">${esc(sub)}</small></span></span>
+            <span class="catnums"><span class="a num">${s.valArs!=null?money(s.valArs):usd(s.valUsd)}</span>
+              <span class="b num ${cls(g)}">${g!=null?signo(g,money):(s.valUsd!=null&&D&&k!=="pesos"?usd(s.valUsd):"")}</span></span></span>
+          <span class="meter"><i style="width:${share}%;background:${colorSec[k]}"></i></span></button>`;
+      }
+      h+=`</div></section>`;
     }
 
-    const m=store.mes(key);
-    h+=`<section class="card"><div class="sechead"><h2 class="sec">Movimientos de ahorro</h2>
-      <span class="eyebrow">${MESES[Number(key.split("-")[1])-1]}</span></div>`;
-    h += (!m||!m.inversiones.length)
-      ? `<div class="empty"><b>Nada guardado este mes</b>Cargá lo que apartaste y en qué lo pusiste.</div>`
-      : `<div class="movs">`+m.inversiones.slice().sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map(i=>
-          `<button type="button" class="mov" data-edit="inv:${i.id}">
-            <span class="bar" style="background:var(--brand)"></span>
-            <span class="txt"><b>${esc(i.instrumento||"Sin destino")}</b>
-              <span>${esc(i.concepto||"")}${i.concepto?" · ":""}${esc(fechaCorta(i.fecha))}</span></span>
-            <span class="amt num">${money(i.monto)}</span></button>`).join("")+`</div>`;
-    return h+`<button class="btn pri full" data-nuevo="inv" style="margin-top:12px">+ Cargar ahorro</button></section>`;
+    const serie=calc.serie(key,12,k=>calc.invertido(k));
+    if(serie.some(s=>s.valor>0))
+      h+=`<section class="card"><div class="sechead"><h2 class="sec">Apartado mes a mes</h2><span class="eyebrow">últimos 12</span></div>
+        ${this.barrasVerticales(serie,key,"var(--brand)")}
+        <p class="hint" style="margin:8px 0 0">Lo que sacaste del presupuesto de cada mes para la cartera.</p></section>`;
+
+    if(P.cerradas.length) h+=this.bloqueCerradas(P,V);
+    if(hay) h+=this.bloqueOperaciones(P,null);
+    return h;
   },
 
-  promedioAhorro(){
-    const con=Object.keys(store.meses).filter(k=>calc.invertido(k)>0||calc.gastado(k)>0);
-    return con.length?calc.ahorroAcumulado()/con.length:0;
+  vistaSeccionAhorro(sec,P,V){
+    const D=V.dolar, s=V.secciones[sec], cls=v=>v==null?"":v>=0?"gain":"loss";
+    let h=`<button type="button" class="volver" id="volverAhorro">‹ Ahorro</button>`;
+
+    if(sec==="cripto"){
+      const fx=D?s.costoUsd*D-s.costoArs:null, g=s.ganArs;
+      h+=`<section class="hero" style="--hero-accent:${g==null?"var(--brand-ink)":g>=0?"var(--good-ink)":"var(--crit-ink)"}">
+        <div class="lbl">Cripto</div><div class="big num">${usd(s.valUsd)}</div>
+        <div class="sub">${D?`≈ ${money(s.valArs)} · pusiste ${usd(s.costoUsd)} (${money(s.costoArs)})`:`pusiste ${usd(s.costoUsd)}`}</div>
+        <div class="miniflow">
+          <div><span class="k">Por la cripto</span><span class="v num ${cls(s.ganUsd)}">${s.ganUsd==null?"—":signo(s.ganUsd,usd)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctSigno(s.ganUsd/s.costoUsd*100)}</span>`:""}</div>
+          <div><span class="k">Por el dólar</span><span class="v num ${cls(fx)}">${fx==null?"—":signo(fx,money)}</span></div>
+          <div><span class="k">Total en $</span><span class="v num ${cls(g)}">${g==null?"—":signo(g,money)}</span>${g!=null&&s.costoArs>0?`<span class="s num ${cls(g)}">${pctSigno(g/s.costoArs*100)}</span>`:""}</div>
+        </div></section>`;
+      if(s.filas.length>1){
+        const items=s.filas.map((f,i)=>({id:null,nombre:f.sym,monto:f.valUsd,color:colorDe(i)}));
+        h+=`<section class="card">${this.donut(items,s.valUsd,"Cripto",usd(s.valUsd),"")}</section>`;
+      }
+      h+=`<section class="card"><div class="sechead"><h2 class="sec">Monedas</h2><span class="eyebrow">${s.filas.length}</span></div><div class="catlist">`
+        + s.filas.map((f,i)=>`<div class="catrow"><div class="cathead">
+            <span class="catname"><i class="dot" style="background:${colorDe(i)}"></i><span><b>${esc(f.sym)}</b>
+              <small class="secsub">${cantidad(f.cant)} ${esc(f.sym)}${f.px!=null?` · ${usd(f.px)} c/u${f.ch!=null?` · <span class="${cls(f.ch)}">${pctSigno(f.ch)} hoy</span>`:""}`:" · sin precio"}</small></span></span>
+            <span class="catnums"><span class="a num">${usd(f.valUsd)}</span><span class="b num">${D?money(f.valArs):""}</span></span></div>
+          <div class="kpis">
+            <div><span class="k">Pusiste</span><span class="num">${usd(f.costoUsd)}</span><span class="num s">${money(f.costoArs)}</span></div>
+            <div><span class="k">Por la cripto</span><span class="num ${cls(f.ganUsd)}">${f.ganUsd==null?"—":signo(f.ganUsd,usd)}</span><span class="num s">${f.costoUsd>0&&f.ganUsd!=null?pctSigno(f.ganUsd/f.costoUsd*100):""}</span></div>
+            <div><span class="k">Por el dólar</span><span class="num ${cls(f.ganFx)}">${f.ganFx==null?"—":signo(f.ganFx,money)}</span></div>
+            <div><span class="k">Total en $</span><span class="num ${cls(f.ganArs)}">${f.ganArs==null?"—":signo(f.ganArs,money)}</span><span class="num s">${f.costoArs>0&&f.ganArs!=null?pctSigno(f.ganArs/f.costoArs*100):""}</span></div>
+          </div></div>`).join("")+`</div></section>`;
+    }
+    else if(sec==="usd"){
+      const g=s.ganArs;
+      h+=`<section class="hero" style="--hero-accent:${g==null?"var(--brand-ink)":g>=0?"var(--good-ink)":"var(--crit-ink)"}">
+        <div class="lbl">Dólares sin invertir</div><div class="big num">${usd(s.cant)}</div>
+        <div class="sub">${D?`≈ ${money(s.valArs)} al dólar de hoy (${moneyD(D)})`:"Sin cotización del dólar"}</div>
+        <div class="miniflow">
+          <div><span class="k">Te costaron</span><span class="v num">${money(s.costoArs)}</span></div>
+          <div><span class="k">Tu dólar promedio</span><span class="v num">${s.tcProm?moneyD(s.tcProm):"—"}</span></div>
+          <div><span class="k">Por el dólar</span><span class="v num ${cls(g)}">${g==null?"—":signo(g,money)}</span>${g!=null&&s.costoArs>0?`<span class="s num ${cls(g)}">${pctSigno(g/s.costoArs*100)}</span>`:""}</div>
+        </div></section>`;
+      if(s.pendientes.length) h+=`<section class="card"><div class="banner">Hay compras de dólares sin cotización. Sin ese dato no sé cuántos dólares son.</div>
+        <div class="movs">${s.pendientes.map(o=>`<button type="button" class="mov" data-op="${o.id}"><span class="bar" style="background:var(--warn)"></span>
+          <span class="txt"><b>${money(o.ars)} del ${esc(fechaCorta(o.fecha))}</b><span>Tocá para completar cuántos dólares fueron</span></span><span class="amt">›</span></button>`).join("")}</div></section>`;
+    }
+    else{
+      h+=`<section class="hero" style="--hero-accent:var(--brand-ink)"><div class="lbl">En pesos</div><div class="big num">${money(s.valArs)}</div>
+        <div class="sub">${D?`≈ ${usd(s.valUsd)}`:""} Plazo fijo, efectivo guardado y similares, al valor que cargaste.</div></section>
+        <section class="card"><div class="catlist">${s.filas.map((f,i)=>`<div class="catrow"><div class="cathead">
+          <span class="catname"><i class="dot" style="background:${colorDe(i+3)}"></i><b>${esc(f.nombre)}</b></span>
+          <span class="catnums"><span class="a num">${money(f.ars)}</span><span class="b num">${s.valArs>0?pct(f.ars/s.valArs*100):""}</span></span></div></div>`).join("")}</div></section>`;
+    }
+    h+=this.bloqueOperaciones(P,sec);
+    return h;
+  },
+
+  bloqueCerradas(P,V){
+    const D=V.dolar, cls=v=>v==null?"":v>=0?"gain":"loss";
+    const lista=P.cerradas.slice().reverse();
+    return `<section class="card"><div class="sechead"><h2 class="sec">Operaciones cerradas</h2><span class="eyebrow">${lista.length}</span></div>
+      <p class="hint" style="margin:-4px 0 10px">Ganancia de cada venta contra tu costo promedio en ese momento.</p>
+      <div class="movs">${lista.map(c=>{
+        const g=c.gananciaUsd!=null?c.gananciaUsd:c.gananciaArs, f=c.gananciaUsd!=null?usd:money;
+        const p=c.base>0?pctSigno(g/c.base*100):"";
+        const extra=c.gananciaUsd!=null&&D?` · en $ hoy ${signo(c.gananciaUsd*D,money)}`:"";
+        return `<button type="button" class="mov" data-op="${c.op.id}"><span class="bar" style="background:${g>=0?"var(--good)":"var(--crit)"}"></span>
+          <span class="txt"><b>${esc(c.det)}</b><span>${esc(fechaCorta(c.op.fecha))}${extra}</span></span>
+          <span class="amt num ${cls(g)}">${signo(g,f)}${p?` <small>${p}</small>`:""}</span></button>`;
+      }).join("")}</div></section>`;
+  },
+
+  bloqueOperaciones(P,sec){
+    const filtro={cripto:["usd_cripto","cripto_usd"],usd:["ars_usd","usd_ars"],pesos:["ars_pesos","pesos_ars"]}[sec]||null;
+    const ops=cartera.opsOrdenadas().reverse().filter(o=>!filtro||filtro.includes(o.tipo));
+    const res=o=>{
+      const ars=Number(o.ars)||0,u=Number(o.usd)||0,q=Number(o.cant)||0;
+      switch(o.tipo){
+        case "ars_usd": return [money(ars)+" → "+(u>0?usd(u):"¿cuántos dólares?"), u>0?"a "+moneyD(ars/u)+" · "+fechaCorta(o.fecha):"falta la cotización · "+fechaCorta(o.fecha)];
+        case "usd_cripto": return [usd(u)+" → "+cantidad(q)+" "+o.activo, (q>0?"a "+usd(u/q)+" c/u · ":"")+fechaCorta(o.fecha)];
+        case "cripto_usd": return [cantidad(q)+" "+o.activo+" → "+usd(u), (q>0?"a "+usd(u/q)+" c/u · ":"")+fechaCorta(o.fecha)];
+        case "usd_ars": return [usd(u)+" → "+money(ars), (u>0?"a "+moneyD(ars/u)+" · ":"")+fechaCorta(o.fecha)];
+        case "ars_pesos": return [money(ars)+" → "+o.activo, fechaCorta(o.fecha)];
+        case "pesos_ars": return [o.activo+" → "+money(ars), fechaCorta(o.fecha)];
+      } return [o.tipo,""]; };
+    const color={ars_usd:"var(--c3)",usd_ars:"var(--c3)",usd_cripto:"var(--c2)",cripto_usd:"var(--c2)",ars_pesos:"var(--c4)",pesos_ars:"var(--c4)"};
+    return `<section class="card"><div class="sechead"><h2 class="sec">Operaciones</h2><button class="btn pri sm" id="nuevaOp">+ Operación</button></div>
+      ${ops.length?`<div class="movs">${ops.map(o=>{ const [a,b]=res(o); return `<button type="button" class="mov" data-op="${o.id}"><span class="bar" style="background:${color[o.tipo]||"var(--brand)"}"></span>
+        <span class="txt"><b>${esc(a)}</b><span>${esc(TIPOS_OP[o.tipo]||o.tipo)} · ${esc(b)}</span></span><span class="amt">›</span></button>`; }).join("")}</div>`
+      :`<div class="empty">Sin operaciones${sec?" en esta sección":""} todavía.</div>`}</section>`;
+  },
+
+  refrescarPrecios(forzar){
+    if(this.tab!=="ahorro"&&!forzar) return;
+    cartera.actualizar(forzar).then(cambio=>{ if(cambio||forzar) this.pedirRender(); });
+    if(forzar) this.pedirRender();
+  },
+
+  /* ------------------------------------------------- operaciones de cartera */
+  numDec(v){
+    v=String(v||"").replace(/[^\d.,-]/g,""); if(!v) return 0;
+    const lc=v.lastIndexOf(","), ld=v.lastIndexOf("."); const dec=lc>ld?",":(ld>-1?".":null);
+    if(dec){ const i=v.lastIndexOf(dec); v=v.slice(0,i).replace(/[.,]/g,"")+"."+v.slice(i+1).replace(/[.,]/g,""); }
+    return parseFloat(v)||0;
+  },
+  fmtDec(n,max){ n=Number(n)||0; return n?n.toLocaleString("es-AR",{maximumFractionDigits:max==null?8:max,useGrouping:false}):""; },
+
+  formOperacion(op){
+    const nuevo=!op, o=op?{...op}:{tipo:this.ultimoTipoOp||"ars_usd",fecha:hoyISO()};
+    const P=cartera.posiciones();
+    const tipos=Object.entries(TIPOS_OP).map(([v,l])=>`<option value="${v}" ${v===o.tipo?"selected":""}>${l}</option>`).join("");
+    const cuerpo=`<label class="f" for="opTipo">Qué hiciste<select id="opTipo">${tipos}</select></label>
+      <div id="opCampos" style="display:flex;flex-direction:column;gap:13px"></div>
+      <div id="opAyuda" class="hint"></div>
+      <label class="f" for="opFecha">Fecha<input type="date" id="opFecha" value="${esc(o.fecha||hoyISO())}"></label>`;
+
+    const body=this.hoja(nuevo?"Nueva operación":"Editar operación",cuerpo,(b)=>{
+      const tipo=$("#opTipo",b).value, g=id=>{ const el=$("#"+id,b); return el?el.value.trim():""; };
+      const n={id:op?op.id:uid(),tipo,fecha:$("#opFecha",b).value||hoyISO()};
+      const ars=this.leerMonto(g("opArs")), u=this.numDec(g("opUsd")), q=this.numDec(g("opCant")), act=g("opActivo");
+      if(tipo==="ars_usd"){ if(!(ars>0)) return this.toast("Poné cuántos pesos pusiste."),false; n.ars=ars; if(u>0){ n.usd=u; n.tc=ars/u; } }
+      if(tipo==="usd_ars"){ if(!(u>0)||!(ars>0)) return this.toast("Faltan los dólares o los pesos."),false; n.usd=u; n.ars=ars; n.tc=ars/u; }
+      if(tipo==="usd_cripto"||tipo==="cripto_usd"){
+        if(!act) return this.toast("¿Qué moneda?"),false; if(!(u>0)||!(q>0)) return this.toast("Faltan los dólares o la cantidad."),false;
+        n.activo=act.toUpperCase(); n.usd=u; n.cant=q; n.precio=u/q;
+        if(tipo==="usd_cripto"&&cartera.precios.dolar) n.tc=cartera.precios.dolar;
+      }
+      if(tipo==="ars_pesos"||tipo==="pesos_ars"){ if(!act) return this.toast("¿Dónde?"),false; if(!(ars>0)) return this.toast("Poné el monto."),false; n.activo=act; n.ars=ars; }
+      this.ultimoTipoOp=tipo;
+      this.guardarOp(n,op);
+    }, op?()=>this.borrarOp(op.id):null);
+
+    const campos=$("#opCampos",body), ayuda=$("#opAyuda",body), sel=$("#opTipo",body);
+    const usdDisp=P.usd.cant, monedas=[...new Set([...Object.keys(P.cripto),...Object.keys(cartera.d.monedas),"BTC","ETH","USDT","USDC","SOL"])];
+    const inp=(id,label,ph,val,mode)=>`<label class="f" for="${id}">${label}<input type="text" id="${id}" class="num" inputmode="${mode||"decimal"}" placeholder="${ph}" value="${esc(val==null?"":val)}" autocomplete="off"></label>`;
+    const trio=(prodId,aId,bId)=>{ /* prod = a × b: se completa el que falte según los dos últimos tocados */
+      const tocados=[]; const el=id=>$("#"+id,body); const val=id=>id==="opArs"?this.leerMonto(el(id).value):this.numDec(el(id).value);
+      const poner=(id,v)=>{ el(id).value=id==="opArs"?(v>0?money(Math.round(v)):""):this.fmtDec(v,id==="opCant"?8:2); };
+      [prodId,aId,bId].forEach(id=>el(id)&&el(id).addEventListener("input",()=>{
+        const i=tocados.indexOf(id); if(i>-1) tocados.splice(i,1); tocados.push(id); if(tocados.length>2) tocados.shift();
+        if(tocados.length<2) return;
+        const falta=[prodId,aId,bId].find(x=>!tocados.includes(x));
+        const p=val(prodId),a=val(aId),b=val(bId);
+        if(falta===prodId&&a>0&&b>0) poner(prodId,a*b);
+        else if(falta===aId&&p>0&&b>0) poner(aId,p/b);
+        else if(falta===bId&&p>0&&a>0) poner(bId,p/a);
+      }));
+    };
+    const pintar=()=>{
+      const t=sel.value; let h="", ay="";
+      if(t==="ars_usd"){ h=inp("opArs","Pesos que pusiste","710.000",o.ars?money(o.ars):"","numeric")+inp("opUsd","Dólares que recibiste","440,51",o.usd?this.fmtDec(o.usd,2):"")+inp("opTc","Cotización (pesos por dólar)","1.611,49",o.usd&&o.ars?this.fmtDec(o.ars/o.usd,2):(cartera.precios.dolar?this.fmtDec(cartera.precios.dolar,2):"")); ay="Cargá dos de los tres y el otro se calcula solo. Esta compra sale del presupuesto del mes."; }
+      if(t==="usd_ars"){ h=inp("opUsd","Dólares que vendiste","440,51",o.usd?this.fmtDec(o.usd,2):"")+inp("opArs","Pesos que recibiste","720.000",o.ars?money(o.ars):"","numeric")+inp("opTc","Cotización","1.640",o.usd&&o.ars?this.fmtDec(o.ars/o.usd,2):""); ay=`Tenés ${usd(usdDisp)} disponibles.`; }
+      if(t==="usd_cripto"){ h=`<label class="f" for="opActivo">Moneda<input type="text" id="opActivo" list="opMonedas" placeholder="BTC" value="${esc(o.activo||"")}" autocomplete="off" style="text-transform:uppercase"><datalist id="opMonedas">${monedas.map(m=>`<option value="${esc(m)}">`).join("")}</datalist></label>`
+          +inp("opUsd","Dólares que usaste","440",o.usd?this.fmtDec(o.usd,2):"")+inp("opCant","Cantidad que compraste","0,0042",o.cant?this.fmtDec(o.cant,8):"")+inp("opPx","Precio por unidad (US$)","104.000",o.usd&&o.cant?this.fmtDec(o.usd/o.cant,2):""); ay=`Tenés ${usd(usdDisp)} disponibles. Cargá dos de los tres campos.`; }
+      if(t==="cripto_usd"){ const ten=Object.values(P.cripto); h=`<label class="f" for="opActivo">Moneda<select id="opActivo">${ten.length?ten.map(c=>`<option value="${esc(c.sym)}" ${c.sym===o.activo?"selected":""}>${esc(c.sym)} · tenés ${cantidad(c.cant)}</option>`).join(""):`<option value="">No tenés cripto</option>`}</select></label>`
+          +inp("opCant","Cantidad que vendiste","0,0042",o.cant?this.fmtDec(o.cant,8):"")+inp("opUsd","Dólares que recibiste","460",o.usd?this.fmtDec(o.usd,2):"")+inp("opPx","Precio por unidad (US$)","109.500",o.usd&&o.cant?this.fmtDec(o.usd/o.cant,2):"")
+          +`<button type="button" class="btn out sm" id="opTodo" style="align-self:flex-start">Vendí todo</button>`; ay="Al guardar te digo cuánto ganaste en esa venta."; }
+      if(t==="ars_pesos"){ h=`<label class="f" for="opActivo">Dónde<input type="text" id="opActivo" list="opDest" placeholder="Plazo fijo" value="${esc(o.activo||"")}"><datalist id="opDest">${["Plazo fijo","Efectivo guardado","Fondo común","Caja de ahorro"].map(x=>`<option value="${x}">`).join("")}</datalist></label>`+inp("opArs","Pesos","100.000",o.ars?money(o.ars):"","numeric"); ay="Sale del presupuesto del mes."; }
+      if(t==="pesos_ars"){ const ten=Object.values(P.pesos); h=`<label class="f" for="opActivo">De dónde<select id="opActivo">${ten.length?ten.map(p=>`<option value="${esc(p.nombre)}" ${p.nombre===o.activo?"selected":""}>${esc(p.nombre)} · ${money(p.ars)}</option>`).join(""):`<option value="">No tenés pesos guardados</option>`}</select></label>`+inp("opArs","Pesos que retiraste","100.000",o.ars?money(o.ars):"","numeric"); }
+      campos.innerHTML=h; ayuda.textContent=ay;
+      if(t==="ars_usd"||t==="usd_ars") trio("opArs","opUsd","opTc");
+      if(t==="usd_cripto"||t==="cripto_usd"){
+        trio("opUsd","opCant","opPx");
+        const a=$("#opActivo",body), px=$("#opPx",body);
+        const sugerir=()=>{ const p=cartera.precioDe(a.value); if(p&&!px.value&&!o.usd) px.value=this.fmtDec(p,2); };
+        a.addEventListener("change",sugerir); a.addEventListener("input",()=>{ a.value=a.value.toUpperCase(); }); sugerir();
+        const todo=$("#opTodo",body); if(todo) todo.onclick=()=>{ const c=P.cripto[a.value]; if(c){ $("#opCant",body).value=this.fmtDec(c.cant,8); $("#opCant",body).dispatchEvent(new Event("input")); } };
+      }
+      const ars=$("#opArs",body); if(ars) ars.addEventListener("change",()=>{ const n=this.leerMonto(ars.value); if(n>0) ars.value=money(n); });
+    };
+    sel.onchange=pintar; pintar();
+  },
+
+  async guardarOp(n,viejo){
+    const ops=cartera.d.ops;
+    const i=ops.findIndex(x=>x.id===n.id); if(i>-1) ops[i]=n; else ops.push(n);
+    /* moneda nueva: intento encontrar su id para el precio */
+    if(n.activo&&(n.tipo==="usd_cripto")&&!cartera.idDe(n.activo)){
+      const r=await cartera.buscarMoneda(n.activo); const hit=r.find(x=>x.sym===n.activo)||r[0];
+      if(hit) cartera.d.monedas[n.activo]=hit.id;
+    }
+    this.sincronizarMovimiento(n);
+    store.guardarConfig();
+    if(n.tipo==="cripto_usd"){
+      const c=cartera.posiciones().cerradas.find(x=>x.op.id===n.id);
+      if(c) this.toast(`Venta guardada: ${c.gananciaUsd>=0?"ganaste":"perdiste"} ${usd(Math.abs(c.gananciaUsd))}${c.base>0?" ("+pctSigno(c.gananciaUsd/c.base*100)+")":""}`);
+    } else if(n.tipo==="usd_ars"){
+      const c=cartera.posiciones().cerradas.find(x=>x.op.id===n.id);
+      if(c) this.toast(`Venta guardada: ${c.gananciaArs>=0?"ganaste":"perdiste"} ${money(Math.abs(c.gananciaArs))} en pesos`);
+    } else this.toast(viejo?"Operación actualizada.":"Operación guardada.");
+    this.refrescarPrecios(true);
+  },
+
+  borrarOp(id){
+    cartera.d.ops=cartera.d.ops.filter(o=>o.id!==id);
+    for(const k in store.meses){ const m=store.meses[k]; const antes=m.inversiones.length; m.inversiones=m.inversiones.filter(x=>x.opId!==id); if(m.inversiones.length!==antes) store.guardarMes(k); }
+    store.guardarConfig(); this.toast("Operación borrada.");
+  },
+
+  /* las operaciones que sacan pesos del presupuesto se reflejan como "ahorro" del mes */
+  sincronizarMovimiento(op){
+    const sale=op.tipo==="ars_usd"||op.tipo==="ars_pesos";
+    const destino=String(op.fecha||"").slice(0,7);
+    for(const k in store.meses){
+      const m=store.meses[k], it=m.inversiones.find(x=>x.opId===op.id);
+      if(it&&(!sale||k!==destino)){ m.inversiones.splice(m.inversiones.indexOf(it),1); store.guardarMes(k); }
+    }
+    if(!sale) return;
+    const m=store.ensureMes(destino);
+    let it=m.inversiones.find(x=>x.opId===op.id);
+    if(!it){ it={id:uid(),opId:op.id}; m.inversiones.push(it); }
+    it.fecha=op.fecha; it.monto=Number(op.ars)||0;
+    it.instrumento=op.tipo==="ars_usd"?"Dólares":op.activo;
+    it.concepto=op.tipo==="ars_usd"?(op.usd>0?`${cantidad(op.usd)} US$ a ${moneyD(op.ars/op.usd)}`:"sin cotización"):"";
+    store.guardarMes(destino);
+  },
+
+  /* un movimiento de ahorro cargado por dictado o a mano genera su operación en la cartera */
+  opDesdeMovimiento(mov){
+    if(mov.opId) return;
+    const ins=norm(mov.instrumento||""), D=cartera.precios.dolar||null;
+    let op;
+    if(/dolar|cripto|usd|bitcoin|btc/.test(ins)){
+      op={id:uid(),tipo:"ars_usd",fecha:mov.fecha,ars:Number(mov.monto)||0};
+      if(D){ op.usd=op.ars/D; op.tc=D; }
+    }else{
+      op={id:uid(),tipo:"ars_pesos",fecha:mov.fecha,ars:Number(mov.monto)||0,activo:mov.instrumento||"Otro"};
+    }
+    cartera.d.ops.push(op); mov.opId=op.id;
+    if(op.tipo==="ars_usd"&&op.usd) mov.concepto=mov.concepto||`${cantidad(op.usd)} US$ a ${moneyD(D)}`;
+    return op;
+  },
+  migrarCartera(){
+    let toco=false;
+    for(const k in store.meses){ let m=false; for(const inv of store.meses[k].inversiones){ if(!inv.opId){ this.opDesdeMovimiento(inv); m=true; } } if(m){ toco=true; store.guardarMes(k); } }
+    if(toco) store.guardarConfig();
   },
 
   /* --------------------------------------------------------------- AJUSTES */
@@ -2002,6 +2399,13 @@ const App={
         <button class="btn out sm" id="addFuente">+ Nueva fuente</button>
       </div></details>
 
+    <details class="set"><summary>Cartera</summary>
+      <div class="body">
+        <label class="f" for="selDolar">Dólar para pasar a pesos
+          <select id="selDolar">${[["cripto","Dólar cripto"],["blue","Dólar blue"],["bolsa","Dólar MEP / bolsa"],["contadoconliqui","Contado con liqui"],["oficial","Dólar oficial"],["tarjeta","Dólar tarjeta"]].map(([v,l])=>`<option value="${v}" ${cartera.d.dolar===v?"selected":""}>${l}</option>`).join("")}</select></label>
+        <p class="hint">Cotizaciones: CoinGecko (cripto) y DolarAPI (dólar). Se actualizan al entrar a Ahorro y quedan guardadas para verlas sin conexión.</p>
+      </div></details>
+
     <details class="set"><summary>Destinos de ahorro <span class="eyebrow">${c.instrumentos.length}</span></summary>
       <div class="body">
         <div class="kvlist">${c.instrumentos.map((f,i)=>`
@@ -2091,6 +2495,14 @@ const App={
     v.querySelectorAll("[data-sub]").forEach(b=>b.onclick=()=>{this.sub=b.dataset.sub;this.render();});
     v.querySelectorAll("[data-hero]").forEach(b=>b.onclick=()=>{this.heroModo=b.dataset.hero;this.render();});
     v.querySelectorAll("[data-fuente]").forEach(b=>b.onclick=()=>{const k="ing:"+b.dataset.fuente;this.abiertas[k]=!this.abiertas[k];this.render();});
+
+    /* cartera */
+    v.querySelectorAll("#nuevaOp").forEach(b=>b.onclick=()=>this.formOperacion(null));
+    v.querySelectorAll("[data-op]").forEach(b=>b.onclick=()=>{ const op=cartera.d.ops.find(o=>o.id===b.dataset.op); if(op) this.formOperacion(op); });
+    v.querySelectorAll("[data-sec]").forEach(b=>b.onclick=()=>{ this.ahorroSec=b.dataset.sec; this.render(); window.scrollTo({top:0,behavior:"smooth"}); });
+    const va=$("#volverAhorro"); if(va) va.onclick=()=>{ this.ahorroSec=null; this.render(); };
+    const rp=$("#refrescarPrecios"); if(rp) rp.onclick=()=>this.refrescarPrecios(true);
+    const selD=$("#selDolar"); if(selD) selD.onchange=()=>{ cartera.d.dolar=selD.value; cartera.precios.ts=0; store.guardarConfig(); this.refrescarPrecios(true); };
     /* desde la vista de tortas, tocar una categoría lleva a su detalle abierto */
     v.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
       const id=b.dataset.cat;
@@ -2380,12 +2792,13 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
         m.ingresos.push({id:uid(),fecha,monto:d.monto,fuente:d.fuente||store.config.fuentes[0]||"Sueldo",
           concepto:d.concepto||d.fuente||"Ingreso"});
       }else{
-        m.inversiones.push({id:uid(),fecha,monto:d.monto,instrumento:d.instrumento||"Otro",concepto:d.concepto||""});
+        const mov={id:uid(),fecha,monto:d.monto,instrumento:d.instrumento||"Otro",concepto:d.concepto||""};
+        m.inversiones.push(mov); this.opDesdeMovimiento(mov); aprendidas+=0; this._tocoCartera=true;
       }
       n++;
     }
     this.borradores=[]; this.ultimoTexto="";
-    if(aprendidas) store.guardarConfig();
+    if(aprendidas||this._tocoCartera){ store.guardarConfig(); this._tocoCartera=false; }
     store.guardarMes(this.mes);
     this.toast(`Guardado: ${n} movimiento${n===1?"":"s"}${aprendidas?` · ${aprendidas} palabra${aprendidas===1?"":"s"} aprendida${aprendidas===1?"":"s"}`:""}`);
   },
@@ -2452,6 +2865,13 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
       const destino=String(obj.fecha).slice(0,7);
       const f=buscar();
       if(f.it) f.lista.splice(f.lista.indexOf(f.it),1);
+      /* el ahorro se refleja en la cartera: la operación ligada sigue al movimiento */
+      if(tipo==="inv"){
+        if(it&&it.opId){
+          obj.opId=it.opId; const op=cartera.d.ops.find(x=>x.id===it.opId);
+          if(op){ op.ars=obj.monto; op.fecha=obj.fecha; if(op.tipo==="ars_usd"&&op.usd>0) op.tc=op.ars/op.usd; if(op.tipo==="ars_pesos") op.activo=obj.instrumento; store.guardarConfig(); }
+        } else { this.opDesdeMovimiento(obj); store.guardarConfig(); }
+      }
       if(destino!==this.mes){
         const dm=store.ensureMes(destino);
         dm[col].push(obj);
@@ -2465,6 +2885,7 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
     }, it?()=>{
       const f=buscar();
       if(f.it) f.lista.splice(f.lista.indexOf(f.it),1);
+      if(tipo==="inv"&&it.opId){ cartera.d.ops=cartera.d.ops.filter(o=>o.id!==it.opId); store.guardarConfig(); }
       store.guardarMes(this.mes); this.toast("Borrado.");
     }:null);
 
