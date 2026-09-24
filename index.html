@@ -182,6 +182,9 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .tag-warn{background:var(--warn-soft);color:var(--warn-ink)}
 .tag-crit{background:var(--crit-soft);color:var(--crit-ink)}
 .tag-none{background:var(--surface-3);color:var(--ink-3)}
+.tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px}
+.tags .metertag{margin-top:0}
+.pctlbl{font-size:11.5px;font-weight:700;color:var(--ink-2);padding:2px 2px 2px 0}
 .subs{display:flex;flex-direction:column;gap:9px;margin-top:13px;padding-top:12px;border-top:1px dashed var(--line-2)}
 .subrow .top{display:flex;justify-content:space-between;gap:10px;font-size:13px;align-items:baseline}
 .subrow .top span:first-child{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -408,7 +411,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260924-190942 -->
+<!-- build 20260924-191213 -->
 
 <div id="shell">
   <header id="topbar">
@@ -771,11 +774,14 @@ const calc={
       /* lo que falta y lo que sobra se cuentan subcategoría por subcategoría:
          pasarse en una no descuenta lo que falta pagar en otra */
       if(c.porSubs){
-        c.faltan=filas.reduce((s,x)=>s+(x.tope>x.monto?x.tope-x.monto:0),0);
-        c.deMas=filas.reduce((s,x)=>s+(x.tope>0&&x.monto>x.tope?x.monto-x.tope:0),0);
+        const faltanEn=filas.filter(x=>x.tope>x.monto*1.01||(x.tope>0&&x.monto===0)), pasadasEn=filas.filter(x=>x.tope>0&&x.monto>x.tope*1.01);
+        c.faltan=faltanEn.reduce((s,x)=>s+(x.tope-x.monto),0);
+        c.deMas=pasadasEn.reduce((s,x)=>s+(x.monto-x.tope),0);
+        c.faltanEn=faltanEn.map(x=>x.nombre); c.deMasEn=pasadasEn.map(x=>x.nombre);
       }else{
-        c.faltan=c.presup>c.gastado?c.presup-c.gastado:0;
-        c.deMas=c.presup>0&&c.gastado>c.presup?c.gastado-c.presup:0;
+        c.faltan=c.presup>c.gastado*1.01?c.presup-c.gastado:0;
+        c.deMas=c.presup>0&&c.gastado>c.presup*1.01?c.gastado-c.presup:0;
+        c.faltanEn=[]; c.deMasEn=[];
       }
       c.sinUsar=subs.filter(s=>!(gastadoPorSub[norm(s)]>0) && !(this.topeSub(m,c.cat.id,s)>0));
     }
@@ -1927,17 +1933,21 @@ const App={
   filaCategoria(c,totalMes){
     const abierta=!!this.abiertas[c.cat.id], color=colorDe(c.cat.color);
     const p=c.presup>0?c.gastado/c.presup*100:null;
-    /* estado de la categoría a partir de sus partes: amarillo si falta algo,
-       rojo si sólo hay excesos, verde si todo está completo */
-    const est=c.presup>0?(c.faltan>0.5?"warn":c.deMas>0.5?"crit":"ok"):"none";
+    /* la barra sigue al total; las etiquetas cuentan las partes: lo que te pasaste
+       en unas subcategorías no descuenta lo que falta pagar en otras */
+    const est=estadoTope(c.gastado,c.presup);
     const fill=colorEstado(est,color);
     const share=totalMes>0?c.gastado/totalMes*100:0;
-    const partes=[];
-    if(c.presup>0){ partes.push(pct(c.gastado/c.presup*100));
-      if(c.faltan>0.5) partes.push("faltan "+money(c.faltan));
-      if(c.deMas>0.5) partes.push(money(c.deMas)+" de más");
-      if(c.faltan<=0.5&&c.deMas<=0.5) partes.push("completo"); }
-    const tag=`<span class="metertag tag-${est}">${c.presup>0?partes.join(" · "):"Sin tope"}</span>`;
+    const donde=(n)=>!n||!n.length?"":n.length<=2?" en "+n.join(" y "):" en "+n.length+" subcategorías";
+    let tag="";
+    if(!(c.presup>0)) tag=`<span class="metertag tag-none">Sin tope</span>`;
+    else{
+      const pills=[];
+      if(c.deMas>0.5) pills.push(`<span class="metertag tag-crit">${money(c.deMas)} de más${esc(donde(c.deMasEn))}</span>`);
+      if(c.faltan>0.5) pills.push(`<span class="metertag tag-warn">faltan ${money(c.faltan)}${esc(donde(c.faltanEn))}</span>`);
+      if(!pills.length) pills.push(`<span class="metertag tag-ok">completo</span>`);
+      tag=`<div class="tags"><span class="pctlbl num">${pct(c.gastado/c.presup*100)}</span>${pills.join("")}</div>`;
+    }
 
     let subs="";
     if(abierta){
