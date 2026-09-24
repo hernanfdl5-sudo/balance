@@ -408,7 +408,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260924-184442 -->
+<!-- build 20260924-190415 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1802,8 +1802,8 @@ const App={
           : `Ingresos menos gastos y ahorro de ${mesN}`)}</div>
       <div class="miniflow">
         <div><span class="k">${lblIng}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
-        <div><span class="k">${proy?"Gastos proyectados":est?"Gastos estimados":"Gastos"}</span><span class="v num">${money(gas)}</span></div>
-        <div><span class="k">Ahorro</span><span class="v num" style="color:var(--brand-ink)">${money(inv)}</span></div>
+        <div><span class="k">${proy?"Gastos proyectados":est?"Gastos estimados":"Gastos"}</span><span class="v num" style="color:var(--crit-ink)">${gas>0?"−":""}${money(gas)}</span></div>
+        <div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${money(inv)}</span></div>
       </div></section>
 
       <div class="segs" role="tablist">
