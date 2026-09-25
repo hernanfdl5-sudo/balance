@@ -335,6 +335,12 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .gain{color:var(--good-ink)} .loss{color:var(--crit-ink)}
 .hero .big2{font-family:"Instrument Serif",Georgia,serif;font-size:27px;line-height:1.05;letter-spacing:-.3px;color:var(--ink);margin:2px 0 6px;opacity:.92}
 .miniflow.tres{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 10px}
+.miniflow.dos{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+.hero .monsel{padding:2px;border-radius:10px;flex:none}
+.hero .monsel button{padding:4px 12px;font-size:12px;border-radius:8px;flex:none}
+.ahorrorow{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 35%,transparent);margin-top:6px}
+.cointotal span{flex:none;margin-right:10px}
+.cointotal b{text-align:right}
 .miniflow.tres .k{white-space:normal;line-height:1.25}
 .miniflow .s{display:block;font-size:11px;font-weight:600;margin-top:1px}
 .ojo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--ink-3);background:var(--surface-3);flex:none}
@@ -411,7 +417,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260924-191213 -->
+<!-- build 20260925-074623 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1853,9 +1859,14 @@ const App={
       h+=`<section class="card">
         <div class="sechead"><h2 class="sec">En qué se fue</h2>
           <span class="eyebrow">${conGasto.length} categoría${conGasto.length===1?"":"s"}${ahorroMes>0?" + ahorro":""}</span></div>
-        ${this.donut(items,salio,"Salió",money(salio),ahorroMes>0?`${money(gas)} gastos · ${money(ahorroMes)} ahorro`:MESES[Number(key.split("-")[1])-1])}
-        ${presup>0?this.lineaProyectado("Proyectado",presup,"Gastado",gas,"por debajo de lo proyectado","por encima de lo proyectado")
-          :`<p class="hint" style="text-align:center;margin:6px 0 0">Tocá una porción para ver cuánto es.</p>`}
+        ${this.donut(items,salio,"Salió",money(salio),MESES[Number(key.split("-")[1])-1])}
+        <div class="miniflow tres" style="margin-top:12px">
+          <div><span class="k">Gastado</span><span class="v num" style="color:var(--crit-ink)">${money(gas)}</span></div>
+          <div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${money(ahorroMes)}</span></div>
+          <div><span class="k">Proyectado</span><span class="v num">${presup>0?money(presup):"—"}</span></div>
+        </div>
+        ${presup>0?(()=>{ const e=estadoTope(gas,presup); const fr=gas>presup*1.01?`Vas ${money(gas-presup)} por encima de lo proyectado · ${pct(gas/presup*100)}`:gas<presup*0.99?`Vas ${money(presup-gas)} por debajo de lo proyectado · ${pct(gas/presup*100)}`:"Justo en lo proyectado"; return `<div style="text-align:center"><span class="metertag tag-${e}" style="margin-top:10px">${fr}</span></div>`; })()
+          :`<p class="hint" style="text-align:center;margin:8px 0 0">Tocá una porción para ver cuánto es.</p>`}
       </section>`;
     }
 
@@ -1863,8 +1874,13 @@ const App={
       <div class="sechead"><h2 class="sec">Categorías</h2>
         <button class="btn out sm" data-irpresup="1">Presupuestos</button></div>
       ${!gas&&!presup?`<p class="hint" style="margin:-4px 0 10px">Todavía no hay gastos ni topes este mes. Cargá desde <b>Cargar</b> o poné los presupuestos.</p>`:""}
-      <div class="catlist">${lista.map(c=>this.filaCategoria(c,gas)).join("")}</div>
-      <div class="tot"><span>Total gastado</span><b class="num">${money(gas)}</b></div></section>`;
+      <div class="catlist">${lista.map(c=>this.filaCategoria(c,gas)).join("")}
+        ${ahorroMes>0?`<div class="catrow ahorrorow">
+          <div class="cathead"><span class="catname"><i class="dot" style="background:var(--warn)"></i><span><b>Ahorro</b><small class="secsub">no es un gasto: plata que sigue siendo tuya</small></span></span>
+            <span class="catnums"><span class="a num" style="color:var(--warn-ink)">${money(ahorroMes)}</span><span class="b num">${gas+ahorroMes>0?pct(ahorroMes/(gas+ahorroMes)*100)+" de lo que salió":""}</span></span></div></div>`:""}
+      </div>
+      <div class="tot"><span>Total gastado</span><b class="num">${money(gas)}</b></div>
+      ${ahorroMes>0?`<div class="tot" style="border-top:none;padding-top:2px;font-size:13px;color:var(--ink-2)"><span>Gastos + ahorro</span><b class="num" style="font-size:14px">${money(gas+ahorroMes)}</b></div>`:""}</section>`;
 
     const serie=calc.serie(key,6,k=>calc.gastado(k));
     if(serie.some(s=>s.valor>0)){
@@ -2179,17 +2195,29 @@ const App={
       /* variación del período: cuánto se movió el valor actual según el cambio de precio de cada moneda */
       let vP=0, baseP=0, hayP=false;
       for(const f of s.filas){ const ch=f.chs?f.chs[per]:null; if(f.px!=null&&ch!=null){ const antes=f.valUsd/(1+ch/100); vP+=f.valUsd-antes; baseP+=antes; hayP=true; } }
-      h+=`<section class="hero" style="--hero-accent:${g==null?"var(--brand-ink)":g>=0?"var(--good-ink)":"var(--crit-ink)"}">
-        <div class="lbl">Cripto</div><div class="big num">${usd(s.valUsd)}</div>
-        ${D?`<div class="big2 num">${money(s.valArs)}</div>`:""}
-        <div class="sub">${hayP?`${PER[per]}: <b class="${cls(vP)}">${signo(vP,window.usd)}${baseP>0?" ("+pctS(vP/baseP*100)+")":""}</b> · `:""}actualizado ${cartera.hace(cartera.precios.ts)}</div>
+      /* US$: sólo lo que depende de la cripto. $: se suma el efecto del dólar. */
+      const enArs=this.monedaCripto==="ars"&&!!D;
+      const ganCriptoArs=(D&&s.ganUsd!=null)?s.ganUsd*D:null;
+      const accHero=enArs?g:s.ganUsd;
+      h+=`<section class="hero" style="--hero-accent:${accHero==null?"var(--brand-ink)":accHero>=0?"var(--good-ink)":"var(--crit-ink)"}">
+        <div class="lbl" style="display:flex;justify-content:space-between;align-items:center">Cripto
+          ${D?`<span class="segs mini monsel" role="tablist"><button role="tab" data-mon="usd" aria-selected="${!enArs}">US$</button><button role="tab" data-mon="ars" aria-selected="${enArs}">$</button></span>`:""}</div>
+        <div class="big num">${enArs?money(s.valArs):usd(s.valUsd)}</div>
+        <div class="sub">${hayP?`${PER[per]}: <b class="${cls(vP)}">${enArs?signo(vP*D,window.money):signo(vP,window.usd)}${baseP>0?" ("+pctS(vP/baseP*100)+")":""}</b> · `:""}actualizado ${cartera.hace(cartera.precios.ts)}</div>
+        ${D?`<div class="sub" style="margin-top:2px">Dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} hoy <b class="num">${O.moneyD(D)}</b>${!enArs?` · ≈ ${money(s.valArs)}`:` · ≈ ${usd(s.valUsd)}`}</div>`:""}
         <div class="segs mini" role="tablist" style="margin-top:10px">${Object.keys(PER).map(k=>`<button role="tab" data-per="${k}" aria-selected="${k===per}">${PER[k]}</button>`).join("")}</div>
+        ${enArs?`
         <div class="miniflow tres">
-          <div><span class="k">Invertiste</span><span class="v num">${usd(s.costoUsd)}</span>${D?`<span class="s num">${money(s.costoArs)} en pesos</span>`:""}</div>
-          <div><span class="k">La cripto te dio</span><span class="v num ${cls(s.ganUsd)}">${s.ganUsd==null?"—":signo(s.ganUsd,window.usd)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctS(s.ganUsd/s.costoUsd*100)} de precio</span>`:""}</div>
-          <div><span class="k">El dólar te dio</span><span class="v num ${cls(fx)}">${fx==null?"—":signo(fx,window.money)}</span>${D&&s.costoUsd>0?`<span class="s num">compraste a ${O.moneyD(s.costoArs/s.costoUsd)} · hoy ${O.moneyD(D)}</span>`:""}</div>
+          <div><span class="k">Invertiste</span><span class="v num">${money(s.costoArs)}</span><span class="s num">${usd(s.costoUsd)}</span></div>
+          <div><span class="k">La cripto te dio</span><span class="v num ${cls(ganCriptoArs)}">${ganCriptoArs==null?"—":signo(ganCriptoArs,window.money)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctS(s.ganUsd/s.costoUsd*100)} de precio</span>`:""}</div>
+          <div><span class="k">El dólar te dio</span><span class="v num ${cls(fx)}">${fx==null?"—":signo(fx,window.money)}</span>${s.costoUsd>0?`<span class="s num">compraste a ${O.moneyD(s.costoArs/s.costoUsd)}</span>`:""}</div>
         </div>
-        ${g!=null?`<div class="cointotal ${cls(g)}"><span>Si vendieras hoy, en pesos</span><b class="num">${signo(g,window.money)}${s.costoArs>0?` (${pctS(g/s.costoArs*100)})`:""}</b></div>`:""}
+        ${g!=null?`<div class="cointotal ${cls(g)}"><span>Si vendieras hoy</span><b class="num">${signo(g,window.money)}${s.costoArs>0?` (${pctS(g/s.costoArs*100)})`:""}</b></div>`:""}`
+        :`
+        <div class="miniflow dos">
+          <div><span class="k">Invertiste</span><span class="v num">${usd(s.costoUsd)}</span></div>
+          <div><span class="k">La cripto te dio</span><span class="v num ${cls(s.ganUsd)}">${s.ganUsd==null?"—":signo(s.ganUsd,window.usd)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctS(s.ganUsd/s.costoUsd*100)} de precio</span>`:""}</div>
+        </div>`}
       </section>`;
       h+=this.graficoEvolucion("usd");
 
@@ -2204,8 +2232,9 @@ const App={
           return `<button type="button" class="tr" data-coin="${esc(f.sym)}" aria-expanded="${abierta}">
             <span class="l"><span class="nom"><i class="dot" style="background:${colorDe(i)}"></i><b>${esc(f.sym)}</b>${s.valUsd>0?`<em class="pill">${pct(f.valUsd/s.valUsd*100)}</em>`:""}</span>
               <small class="num">${f.px!=null?usdPrecio(f.px):"sin precio"}${chP!=null?` <span class="${cls(chP)}">${pctSigno(chP)}</span>`:""}</small></span>
-            <span class="r num"><b>${usd(f.valUsd)}</b><small>${cantidad(f.cant)} ${esc(f.sym)}</small>
-              <small class="${cls(f.ganUsd)}">${f.ganUsd==null?"":signo(f.ganUsd,window.usd)+(f.costoUsd>0?" ("+pctS(f.ganUsd/f.costoUsd*100)+")":"")}</small></span>
+            <span class="r num"><b>${enArs?money(f.valArs):usd(f.valUsd)}</b><small>${cantidad(f.cant)} ${esc(f.sym)}</small>
+              ${enArs?`<small class="${cls(f.ganArs)}">${f.ganArs==null?"":signo(f.ganArs,window.money)+(f.costoArs>0?" ("+pctS(f.ganArs/f.costoArs*100)+")":"")}</small>`
+                    :`<small class="${cls(f.ganUsd)}">${f.ganUsd==null?"":signo(f.ganUsd,window.usd)+(f.costoUsd>0?" ("+pctS(f.ganUsd/f.costoUsd*100)+")":"")}</small>`}</span>
           </button>
           ${abierta?`<div class="coindet">
             <div class="kpis tres">
@@ -2661,6 +2690,7 @@ const App={
     const ojo=$("#ojoPriv"); if(ojo) ojo.onclick=()=>{ this.priv=!this.priv; this.render(); };
     v.querySelectorAll("[data-coin]").forEach(b=>b.onclick=()=>{ const k="coin:"+b.dataset.coin; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-per]").forEach(b=>b.onclick=()=>{ this.periodoCripto=b.dataset.per; this.render(); });
+    v.querySelectorAll("[data-mon]").forEach(b=>b.onclick=()=>{ this.monedaCripto=b.dataset.mon; this.render(); });
     const selD=$("#selDolar"); if(selD) selD.onchange=()=>{ cartera.d.dolar=selD.value; cartera.precios.ts=0; store.guardarConfig(); this.refrescarPrecios(true); };
     /* desde la vista de tortas, tocar una categoría lleva a su detalle abierto */
     v.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
