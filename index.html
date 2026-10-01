@@ -444,7 +444,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-174456 -->
+<!-- build 20261001-174842 -->
 
 <div id="shell">
   <header id="topbar">
@@ -2287,15 +2287,8 @@ const App={
       + fuentes.map((f,i)=>this.filaFuente(f,i,ing)).join("")
       + `</div><div class="tot"><span>Total ingresado</span><b class="num" style="color:var(--good-ink)">${money(ing)}</b></div></section>`;
 
-    h+=`<section class="card"><div class="sechead"><h2 class="sec">Movimientos</h2>
-      <span class="eyebrow">${m.ingresos.length}</span></div><div class="movs">`
-      + m.ingresos.slice().sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))).map(i=>
-        `<button type="button" class="mov" data-edit="ing:${i.id}">
-          <span class="bar" style="background:var(--good)"></span>
-          <span class="txt"><b>${esc(i.concepto||i.fuente||"Ingreso")}</b>
-            <span>${esc(i.fuente||"Sin fuente")} · ${esc(fechaCorta(i.fecha))}</span></span>
-          <span class="amt num in">+${money(i.monto)}</span></button>`).join("")
-      + `</div><button class="btn pri full" data-nuevo="ing" style="margin-top:12px">+ Cargar ingreso</button></section>`;
+    /* la lista completa vive en Mes a mes › Movimientos; acá sólo el acceso rápido */
+    h+=`<button class="btn pri full" data-nuevo="ing">+ Cargar ingreso</button>`;
 
     return h;
   },
