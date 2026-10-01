@@ -208,7 +208,8 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .psub input{flex:0 0 130px;padding:8px 10px;font-size:14px}
 
 .vchart{display:flex;align-items:flex-end;gap:4px;height:150px;position:relative;padding-top:18px}
-.vcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative;min-width:0}
+.vcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative;min-width:0;padding:0;border-radius:4px;transition:opacity .15s}
+.vcol.off{opacity:.35} .vcol.sel .bar{opacity:1;filter:brightness(1.08)}
 .vcol .bar{border-radius:4px 4px 2px 2px;min-height:3px;transition:height .5s cubic-bezier(.2,.7,.3,1)}
 .vcol .bar.dim{opacity:.45}
 .vcol .val{position:absolute;left:0;right:0;text-align:center;font-size:9.5px;font-weight:600;color:var(--ink-2);top:0}
@@ -428,7 +429,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-141242 -->
+<!-- build 20261001-142127 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1395,12 +1396,12 @@ const App={
       ahorro:'<path d="M12 3v18M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.7 5 3.2 5 1.3 5 3.3-2.2 3-5 3-5-1.1-5-3"/>',
       ajustes:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'
     };
-    ICON.alertas='<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/>';
-    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",alertas:"Alertas",ajustes:"Ajustes"};
+    ICON.historial='<path d="M4 18l5-6 4 3 7-9M4 20h16"/>';
+    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",historial:"Mes a mes",ajustes:"Ajustes"};
     const pend=store.listos?calc.alertas(this.mes).sinCargar.length:0;
     $("#tabs").innerHTML=Object.keys(L).map(k=>
       `<button class="t" role="tab" data-tab="${k}" aria-selected="${k===this.tab}">
-        <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${k==="alertas"&&pend?`<b class="badge">${pend}</b>`:""}</span>${L[k]}</button>`).join("");
+        <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${k==="ajustes"&&pend?`<b class="badge">${pend}</b>`:""}</span>${L[k]}</button>`).join("");
     $("#tabs").onclick=e=>{
       const b=e.target.closest("[data-tab]"); if(!b) return;
       this.tab=b.dataset.tab; this.pintarTabs(); this.render();
@@ -1644,6 +1645,7 @@ const App={
     const scrollY=window.scrollY;
 
     v.innerHTML = this.tab==="cargar"?this.vistaCargar()
+      : this.tab==="historial"?this.vistaHistorial()
       : this.tab==="movs"?this.bloqueMovimientos()
       : this.tab==="alertas"?this.vistaAlertas()
       : this.tab==="resumen"?this.vistaResumen()
@@ -1724,13 +1726,29 @@ const App={
     const cols=serie.map((s,i)=>{
       const v=s.valor, h=Math.max(Math.abs(v)/max*100,v!==0?3:0), act=s.key===keyActual;
       const et=(i===iMax||act)&&v!==0?`<span class="val num">${(v<0?"−":"")+moneyShort(Math.abs(v))}</span>`:"";
-      return `<div class="vcol" title="${MESES[s.mes-1]}: ${money(v)}">${et}
-        <div class="bar ${act?"":"dim"}" style="height:${h}%;background:${v<0?"var(--crit)":color}"></div></div>`;
+      return `<button type="button" class="vcol" data-bar="${i}" data-nombre="${MESES[s.mes-1]} ${s.key.slice(0,4)}" data-monto="${v}" aria-label="${MESES[s.mes-1]}: ${money(v)}">${et}
+        <div class="bar ${act?"":"dim"}" style="height:${h}%;background:${v<0?"var(--crit)":color}"></div></button>`;
     }).join("");
     return `<div class="vchart" role="img" aria-label="Barras por mes">
         <div class="gridline" style="top:18px"></div>
         <div class="gridline" style="top:calc(18px + (100% - 18px) / 2)"></div>${cols}</div>
-      <div class="vaxis">${serie.map(s=>`<span class="${s.key===keyActual?"now":""}">${MESES_CORTO[s.mes-1]}</span>`).join("")}</div>`;
+      <div class="vaxis">${serie.map(s=>`<span class="${s.key===keyActual?"now":""}">${MESES_CORTO[s.mes-1]}</span>`).join("")}</div>
+      <div class="slicebox barbox" hidden></div>`;
+  },
+
+  /* recuadro con el valor exacto de la barra tocada */
+  mostrarBarra(col){
+    const chart=col.closest(".vchart"); if(!chart) return;
+    const box=chart.parentElement.querySelector(".barbox"); if(!box) return;
+    const ya=col.classList.contains("sel");
+    chart.querySelectorAll(".vcol").forEach(c=>c.classList.remove("sel","off"));
+    if(ya){ box.hidden=true; return; }
+    chart.querySelectorAll(".vcol").forEach(c=>{ if(c!==col) c.classList.add("off"); });
+    col.classList.add("sel");
+    const v=Number(col.dataset.monto)||0;
+    box.innerHTML=`<i class="dot" style="background:${col.querySelector(".bar").style.background}"></i>
+      <span class="nm">${esc(col.dataset.nombre)}</span><span class="num v ${v<0?"loss":""}">${(v<0?"−":"")+money(Math.abs(v))}</span><span></span>`;
+    box.hidden=false;
   },
 
   /* ---------------------------------------------------------------- CARGAR */
@@ -1870,12 +1888,20 @@ const App={
       </div></section>
 
       <div class="segs" role="tablist">
-        <button role="tab" data-sub="egresos" aria-selected="${this.sub==="egresos"}">Egresos</button>
+        <button role="tab" data-sub="egresos" aria-selected="${this.sub!=="ingresos"}">Egresos</button>
         <button role="tab" data-sub="ingresos" aria-selected="${this.sub==="ingresos"}">Ingresos</button>
-        <button role="tab" data-sub="historial" aria-selected="${this.sub==="historial"}">Mes a mes</button>
       </div>`;
 
-    return h + (this.sub==="egresos"?this.panelEgresos(key):this.sub==="historial"?this.panelHistorial(key):this.panelIngresos(key));
+    return h + (this.sub==="ingresos"?this.panelIngresos(key):this.panelEgresos(key));
+  },
+
+  /* ------------------------------------------------- MES A MES (pestaña) */
+  vistaHistorial(){
+    const s=this.subHist==="movs"?"movs":"meses";
+    return `<div class="segs" role="tablist">
+        <button role="tab" data-subhist="meses" aria-selected="${s==="meses"}">Mes a mes</button>
+        <button role="tab" data-subhist="movs" aria-selected="${s==="movs"}">Movimientos</button>
+      </div>`+(s==="movs"?this.bloqueMovimientos(false):this.panelHistorial(this.mes));
   },
 
   panelEgresos(key){
@@ -1936,7 +1962,9 @@ const App={
   },
 
   /* ------------------------------------------- presupuestos (ventana) */
-  formPresupuestos(){
+  formPresupuestos(modo){
+    /* modo "gastos": topes de categorías (desde Egresos). "ingresos": esperados por fuente (desde Ingresos). */
+    modo=modo==="ingresos"?"ingresos":"gastos";
     const m=store.mes(this.mes)||MES_DEF(), c=store.config, mesN=MESES[Number(this.mes.split("-")[1])-1];
     const grupoIng=`<div class="pgrupo">
       <div class="phead"><b><i class="dot" style="background:var(--good)"></i>Ingresos esperados</b>
@@ -1955,11 +1983,12 @@ const App={
           <input type="text" class="num" data-presup-sub="${esc(cat.id)}" data-sub="${esc(s)}" inputmode="numeric" value="${calc.topeSub(m,cat.id,s)?money(calc.topeSub(m,cat.id,s)):""}" placeholder="Sin tope" aria-label="Tope de ${esc(s)}"></div>`).join("")}
       </div>`;
     }).join("");
-    const cuerpo=`<p class="hint">Lo que esperás cobrar y lo que pensás gastar en ${mesN}. En las categorías con subcategorías el tope va en cada una y la categoría es la suma.</p>
-      ${grupoIng}${grupos}
-      <button type="button" class="btn out sm" id="copiarPresup" style="align-self:flex-start">Copiar los del mes anterior</button>`;
+    const cuerpo=(modo==="ingresos"
+      ?`<p class="hint">Lo que esperás cobrar en ${mesN} de cada fuente. Sirve para Proyectado, Estimado y las alertas.</p>${grupoIng}`
+      :`<p class="hint">Lo que pensás gastar en ${mesN}. En las categorías con subcategorías el tope va en cada una y la categoría es la suma.</p>${grupos}`)
+      +`<button type="button" class="btn out sm" id="copiarPresup" style="align-self:flex-start">Copiar los del mes anterior</button>`;
 
-    const body=this.hoja("Presupuestos de "+mesN,cuerpo,(b)=>{
+    const body=this.hoja((modo==="ingresos"?"Ingresos esperados de ":"Presupuestos de ")+mesN,cuerpo,(b)=>{
       const mm=store.ensureMes(this.mes);
       mm.presupuestos=mm.presupuestos||{}; mm.presupuestosSub=mm.presupuestosSub||{}; mm.presupuestosIng=mm.presupuestosIng||{};
       b.querySelectorAll("[data-presup-cat]").forEach(inp=>{ const n=this.leerMonto(inp.value); if(n>0) mm.presupuestos[inp.dataset.presupCat]=n; else delete mm.presupuestos[inp.dataset.presupCat]; });
@@ -2003,6 +2032,22 @@ const App={
       body.querySelectorAll("[data-edcat]").forEach(b=>b.onclick=()=>{ $("#sheet").close(); this.editarCat(b.dataset.edcat); });
       body.querySelectorAll("[data-delcat]").forEach(b=>b.onclick=()=>{ this.borrarCat(b.dataset.delcat); $("#listaCats",body).innerHTML=pintar(); enlazar(); });
       $("#addCat",body).onclick=()=>{ $("#sheet").close(); this.editarCat(null); };
+    };
+    enlazar();
+  },
+
+  gestionFuentes(){
+    const pintar=()=>store.config.fuentes.map((f,i)=>`<div class="kv"><span class="g">${esc(f)}</span>
+        <button type="button" class="x" data-edfuente="${i}" aria-label="Renombrar">✎</button>
+        <button type="button" class="x d" data-delfuente="${i}" aria-label="Quitar">×</button></div>`).join("");
+    const body=this.hoja("Fuentes de ingreso",`<p class="hint">De dónde te entra la plata. Renombrar arrastra los ingresos ya cargados.</p>
+      <div class="kvlist" id="listaFuentes">${pintar()}</div>
+      <button type="button" class="btn pri sm" id="addFuente" style="align-self:flex-start">+ Nueva fuente</button>`,()=>true,null);
+    $("#shOk",body).textContent="Listo";
+    const enlazar=()=>{
+      body.querySelectorAll("[data-edfuente]").forEach(b=>b.onclick=()=>{ $("#sheet").close(); this.editarLista("fuentes",Number(b.dataset.edfuente),"fuente de ingreso"); });
+      body.querySelectorAll("[data-delfuente]").forEach(b=>b.onclick=()=>{ this.borrarLista("fuentes",Number(b.dataset.delfuente)); $("#listaFuentes",body).innerHTML=pintar(); enlazar(); });
+      $("#addFuente",body).onclick=()=>{ $("#sheet").close(); this.editarLista("fuentes",null,"fuente de ingreso"); };
     };
     enlazar();
   },
@@ -2208,7 +2253,7 @@ const App={
     const items=fuentes.filter(f=>f.monto>0).map(f=>({id:null,nombre:f.nombre,monto:f.monto,color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
     let h=aviso+`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
-        <span class="eyebrow">${fuentes.length} fuente${fuentes.length===1?"":"s"}</span></div>
+        <span style="display:flex;gap:6px"><button class="btn out sm" data-iresp="1">Esperados</button><button class="btn out sm" id="btnFuentes">Fuentes</button></span></div>
       ${ing>0?this.donut(items,ing,"Ingresó",money(ing),mesN):""}
       ${esperado>0?this.lineaProyectado("Esperado",esperado,"Cobrado",ing,"por debajo de lo esperado","por encima de lo esperado"):""}
       <div class="catlist" style="margin-top:8px">`
@@ -2259,6 +2304,24 @@ const App={
           <span class="b num">${f.esperado>0?"de "+money(f.esperado):(total>0&&f.monto>0?pct(f.monto/total*100)+" del total":"")}</span></span>
       </button>
       <div class="meter"><i style="width:${p}%;background:${fill}"></i></div>${tag}${subs}</div>`;
+  },
+
+  /* alertas compactas para Ajustes: sólo las listas */
+  bloqueAlertas(){
+    const key=this.mes, mesN=MESES[Number(key.split("-")[1])-1], a=calc.alertas(key);
+    const fila=(f,derecha,est)=>`<div class="alrow">
+        <i class="dot" style="background:${f.ing?"var(--good)":colorDe(f.cat.color)}"></i>
+        <span class="g"><b>${esc(f.nombre||f.cat.nombre)}</b>${f.nombre?`<small>${esc(f.cat.nombre)}</small>`:""}</span>
+        <span class="num r ${est}">${derecha}</span></div>`;
+    if(!a.sinCargar.length&&!a.conSaldo.length&&!a.pasados.length)
+      return `<p class="hint">Sin topes en ${mesN}: las alertas salen de los presupuestos (Resumen › Presupuestos).</p>`;
+    const disponible=a.conSaldo.filter(f=>!f.ing).reduce((s,f)=>s+(f.tope-f.gastado),0)+a.sinCargar.filter(f=>!f.ing).reduce((s,f)=>s+f.tope,0);
+    let h=`<p class="hint">Te queda por gastar dentro de los topes: <b class="num" style="color:var(--ink)">${money(disponible)}</b>.</p>`;
+    h+=`<div class="eyebrow">Todavía sin cargar · ${a.sinCargar.length}</div>`;
+    h+=a.sinCargar.length?`<div class="allist">${a.sinCargar.map(f=>fila(f,(f.ing?"esperado ":"tope ")+money(f.tope),"none")).join("")}</div>`:`<p class="hint">Todo lo que tiene tope ya tiene algo cargado.</p>`;
+    if(a.conSaldo.length) h+=`<div class="eyebrow" style="margin-top:8px">Con saldo disponible · ${a.conSaldo.length}</div><div class="allist">${a.conSaldo.map(f=>fila(f,(f.ing?"faltan ":"quedan ")+money(f.tope-f.gastado),"ok")).join("")}</div>`;
+    if(a.pasados.length) h+=`<div class="eyebrow" style="margin-top:8px">Pasados del tope · ${a.pasados.length}</div><div class="allist">${a.pasados.map(f=>fila(f,"+"+money(f.gastado-f.tope),"crit")).join("")}</div>`;
+    return h;
   },
 
   /* --------------------------------------------------------------- ALERTAS */
@@ -2713,28 +2776,9 @@ const App={
           <button class="btn pri sm" id="activarLock">Activar bloqueo</button>`}
       </div></details>
 
-    <details class="set" id="setMovs"><summary>Movimientos de ${MESES[Number(this.mes.split("-")[1])-1]}
-      <span class="eyebrow">${(m.gastos||[]).length+(m.ingresos||[]).length+(m.inversiones||[]).length}</span></summary>
-      <div class="body">${this.bloqueMovimientos(true)}</div></details>
-
-    <details class="set"><summary>Fuentes de ingreso <span class="eyebrow">${c.fuentes.length}</span></summary>
-      <div class="body">
-        <p class="hint">De dónde te entra la plata. Es lo que desglosa la pestaña Ingresos.</p>
-        <div class="kvlist">${c.fuentes.map((f,i)=>`
-          <div class="kv"><span class="g">${esc(f)}</span>
-            <button class="x" data-edfuente="${i}" aria-label="Renombrar">✎</button>
-            <button class="x d" data-delfuente="${i}" aria-label="Quitar">×</button></div>`).join("")}</div>
-        <button class="btn out sm" id="addFuente">+ Nueva fuente</button>
-      </div></details>
-
-    <details class="set"><summary>Destinos de ahorro <span class="eyebrow">${c.instrumentos.length}</span></summary>
-      <div class="body">
-        <div class="kvlist">${c.instrumentos.map((f,i)=>`
-          <div class="kv"><span class="g">${esc(f)}</span>
-            <button class="x" data-edinstr="${i}" aria-label="Renombrar">✎</button>
-            <button class="x d" data-delinstr="${i}" aria-label="Quitar">×</button></div>`).join("")}</div>
-        <button class="btn out sm" id="addInstr">+ Nuevo destino</button>
-      </div></details>
+    <details class="set" id="setAlertas"><summary>Alertas de ${MESES[Number(this.mes.split("-")[1])-1]}
+      <span class="eyebrow">${(()=>{const a=calc.alertas(this.mes);return a.sinCargar.length+" sin cargar";})()}</span></summary>
+      <div class="body">${this.bloqueAlertas()}</div></details>
 
     <details class="set"><summary>Palabras que aprendió <span class="eyebrow">${propios.length}</span></summary>
       <div class="body">
@@ -2835,10 +2879,14 @@ const App={
     v.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null));
     v.querySelectorAll("[data-fmov]").forEach(b=>b.onclick=()=>{this.filtroMov=b.dataset.fmov;this.render();});
     v.querySelectorAll("[data-vegr]").forEach(b=>b.onclick=()=>{this.vistaEgr=b.dataset.vegr;this.render();});
-    v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>this.formPresupuestos());
+    v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>this.formPresupuestos("gastos"));
+    v.querySelectorAll("[data-iresp]").forEach(b=>b.onclick=()=>this.formPresupuestos("ingresos"));
     const bc=$("#btnCats"); if(bc) bc.onclick=()=>this.gestionCategorias();
     const bs=$("#btnSubs"); if(bs) bs.onclick=()=>this.gestionSubcategorias();
+    const bf=$("#btnFuentes"); if(bf) bf.onclick=()=>this.gestionFuentes();
     v.querySelectorAll("[data-hs]").forEach(b=>b.onclick=()=>{this.serieHist=b.dataset.hs;this.render();});
+    v.querySelectorAll("[data-subhist]").forEach(b=>b.onclick=()=>{this.subHist=b.dataset.subhist;this.render();});
+    v.querySelectorAll("[data-bar]").forEach(b=>b.onclick=()=>this.mostrarBarra(b));
 
     const sw=$("#swArrastre"); if(sw) sw.onchange=()=>{store.config.arrastre=sw.checked;store.guardarConfig();};
 
