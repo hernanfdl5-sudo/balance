@@ -444,7 +444,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-173649 -->
+<!-- build 20261001-174239 -->
 
 <div id="shell">
   <header id="topbar">
@@ -2439,11 +2439,6 @@ const App={
           <div class="srow total ${cls(gan)}"><span>${gan>=0?"Ganás":"Perdés"}</span><b class="num">${signo(gan,window.money)} <small>${pctS(gan/V.costoArs*100)}</small></b></div>
           <div class="srow causa ${cls(gC)}"><span>por el precio de la cripto</span><b class="num">${signo(gC,window.money)}${ganU!=null?` <small>${signo(ganU,window.usd)}</small>`:""}</b></div>
           <div class="srow causa ${cls(gD)}"><span>por el dólar</span><b class="num">${signo(gD,window.money)}</b></div>
-        </div>`:""}
-        ${V.secciones.cripto?`
-        <div class="varia">
-          <div class="segs mini" role="tablist">${Object.keys(PER).map(k=>`<button role="tab" data-per="${k}" aria-selected="${k===per}">${PER[k]}</button>`).join("")}</div>
-          <div class="sub" style="margin-top:8px">${hayP?`La cripto se movió <b class="${cls(vP)}">${signo(vP,window.usd)}${baseP>0?" ("+pctS(vP/baseP*100)+")":""}</b>${D?` ≈ <b class="${cls(vP)}">${signo(vP*D,window.money)}</b>`:""} en ${PER[per]}`:"Sin datos de precio para este período."}</div>
         </div>`:""}
       </section>`;
       if(V.sinPrecio.length) h+=`<div class="banner">Sin precio para ${V.sinPrecio.map(esc).join(", ")}. ${navigator.onLine?"Tocá “actualizado” para reintentar, o revisá el nombre de la moneda en la operación.":"Cuando tengas internet se actualiza solo."}</div>`;
