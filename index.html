@@ -418,7 +418,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-134800 -->
+<!-- build 20261001-135422 -->
 
 <div id="shell">
   <header id="topbar">
@@ -833,9 +833,11 @@ const calc={
       const prev=keyMas(key,-1), nom="Sobrante de "+MESES[Number(prev.split("-")[1])-1].toLowerCase();
       acc[this.FUENTE_SOBRANTE]={nombre:this.FUENTE_SOBRANTE,monto:sob,esperado:0,virtual:true,conceptos:{[nom]:sob}};
     }
+    /* las fuentes configuradas (Sueldo, Ganancias…) aparecen siempre, aunque estén en cero */
+    const fijas=new Set(store.config.fuentes);
     return Object.values(acc)
       .map(f=>({...f,lista:Object.entries(f.conceptos).map(([nombre,monto])=>({nombre,monto})).sort((a,b)=>b.monto-a.monto)}))
-      .filter(x=>x.monto>0||x.esperado>0)
+      .filter(x=>fijas.has(x.nombre)||x.monto>0||x.esperado>0)
       .sort((a,b)=>(b.monto-a.monto)||(b.esperado-a.esperado));
   },
 
@@ -1822,12 +1824,14 @@ const App={
     const inv=calc.invertido(key), ingReal=calc.ingresos(key), ingEsp=calc.ingEsperado(key);
     /* Real: lo gastado y lo cobrado. Proyectado: topes e ingresos esperados (un mes normal).
        Estimado: por rubro, lo mayor entre lo previsto y lo que ya pasó */
-    const ing=proy?(ingEsp>0?ingEsp:ingReal):est?calc.ingEstimado(key):ingReal;
-    const gas=proy?calc.presupuesto(key):est?calc.estimado(key):calc.gastado(key);
+    /* el sobrante del mes anterior cuenta como ingreso y la deuda como gasto en los tres modos */
+    const sob=Math.max(calc.sobrante(key),0), deu=calc.deuda(key);
+    const ing=proy?((ingEsp>0?ingEsp:calc.ingresosReales(key))+sob):est?calc.ingEstimado(key):ingReal;
+    const gas=proy?calc.presupuesto(key)+deu:est?calc.estimado(key):calc.gastado(key);
     const lblIng=proy&&ingEsp>0?"Ingresos esperados":est?"Ingresos estimados":"Ingresos";
     const arr=calc.arrastre(key),neto=ing-gas-inv,final=neto+arr;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
-    const lbl=(proy||est)?(final>=0?"Te sobraría":"Te faltarían"):(final>=0?"Te sobró":"Estás en rojo por");
+    const lbl=(proy||est)?(final>=0?"Te sobraría":"Te faltarían"):(final>=0?"Plata disponible":"Estás en rojo por");
     const sinTopes=calc.presupuesto(key)===0;
 
     let h=`<section class="hero" style="--hero-accent:${acc}">
@@ -2039,14 +2043,10 @@ const App={
   panelIngresos(key){
     const m=store.mes(key), ing=calc.ingresos(key), fuentes=calc.porFuente(key), mesN=MESES[Number(key.split("-")[1])-1];
     const esperado=calc.ingEsperado(key);
-    if(!ing&&!esperado){
-      return `<section class="card"><div class="empty"><b>Sin ingresos cargados</b>
-        Cargá tu sueldo o lo que te haya entrado este mes.</div>
-        <button class="btn pri full" data-nuevo="ing">+ Cargar ingreso</button></section>`;
-    }
+    const aviso=(!ing&&!esperado)?`<div class="banner" style="margin-bottom:12px">Todavía no cargaste ingresos en ${mesN.toLowerCase()}. Tocá una fuente para ver el detalle o cargá uno con “+ Ingreso”.</div>`:"";
 
     const items=fuentes.filter(f=>f.monto>0).map(f=>({id:null,nombre:f.nombre,monto:f.monto,color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
-    let h=`<section class="card">
+    let h=aviso+`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
         <span class="eyebrow">${fuentes.length} fuente${fuentes.length===1?"":"s"}</span></div>
       ${ing>0?this.donut(items,ing,"Ingresó",money(ing),mesN):""}
