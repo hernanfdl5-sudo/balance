@@ -339,6 +339,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .hero .monsel{padding:2px;border-radius:10px;flex:none}
 .hero .monsel button{padding:4px 12px;font-size:12px;border-radius:8px;flex:none}
 .ahorrorow{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 35%,transparent);margin-top:6px}
+.deudarow{background:var(--crit-soft);border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
 .cointotal span{flex:none;margin-right:10px}
 .cointotal b{text-align:right}
 .miniflow.tres .k{white-space:normal;line-height:1.25}
@@ -417,7 +418,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20260925-074623 -->
+<!-- build 20261001-134800 -->
 
 <div id="shell">
   <header id="topbar">
@@ -667,8 +668,20 @@ const store={
 /* ============================ cálculos ============================ */
 
 const calc={
-  gastado(k){const m=store.mes(k);return m?m.gastos.reduce((s,g)=>s+(Number(g.monto)||0),0):0;},
-  ingresos(k){const m=store.mes(k);return m?m.ingresos.reduce((s,g)=>s+(Number(g.monto)||0),0):0;},
+  gastadoReal(k){const m=store.mes(k);return m?m.gastos.reduce((s,g)=>s+(Number(g.monto)||0),0):0;},
+  /* lo que faltó el mes anterior entra como un gasto más ("deuda del mes anterior") */
+  deuda(k){ const s=this.sobrante(k); return s<0?-s:0; },
+  gastado(k){ return this.gastadoReal(k)+this.deuda(k); },
+  CAT_DEUDA:"__deuda",
+  ingresosReales(k){const m=store.mes(k);return m?m.ingresos.reduce((s,g)=>s+(Number(g.monto)||0),0):0;},
+  /* lo que sobró (o faltó) el mes anterior; si sobró, entra como un ingreso más */
+  sobrante(k){
+    if(!store.config.arrastre) return 0;
+    const prev=keyMas(k,-1); if(!store.mes(prev)) return 0;
+    return this.neto(prev);
+  },
+  ingresos(k){ const s=this.sobrante(k); return this.ingresosReales(k)+(s>0?s:0); },
+  FUENTE_SOBRANTE:"Sobrante del mes anterior",
   invertido(k){const m=store.mes(k);return m?m.inversiones.reduce((s,g)=>s+(Number(g.monto)||0),0):0;},
   /* tope de una subcategoría */
   topeSub(mes,catId,sub){
@@ -696,7 +709,9 @@ const calc={
       if(!store.cat(id)) t+=Number(m.presupuestos[id])||0;
     return t;
   },
-  neto(k){return this.ingresos(k)-this.gastado(k)-this.invertido(k);},
+  /* resultado del mes: ingresos (con el sobrante anterior) menos gastos y ahorro,
+     menos lo que haya faltado el mes anterior */
+  neto(k){ return this.ingresos(k)-this.gastado(k)-this.invertido(k); },
 
   /* qué topes del mes siguen sin gasto, cuáles tienen saldo y cuáles se pasaron */
   alertas(key){
@@ -737,10 +752,8 @@ const calc={
     return t;
   },
 
-  arrastre(k){
-    if(!store.config.arrastre) return 0;
-    return Object.keys(store.meses).filter(x=>x<k).sort().reduce((a,x)=>a+this.neto(x),0);
-  },
+  /* el sobrante viaja como ingreso y la deuda como gasto: ya no hay arrastre aparte */
+  arrastre(k){ return 0; },
 
   porCategoria(key){
     const m=store.mes(key), out={};
@@ -756,6 +769,12 @@ const calc={
       b.gastado+=v;
       const cn=(g.concepto||"Sin detalle").trim();
       b.conceptos[cn]=(b.conceptos[cn]||0)+v;
+    }
+    const deuda=this.deuda(key);
+    if(deuda>0){
+      const prev=keyMas(key,-1), nom="Faltante de "+MESES[Number(prev.split("-")[1])-1].toLowerCase();
+      out[this.CAT_DEUDA]={cat:{id:this.CAT_DEUDA,nombre:"Deuda del mes anterior",color:7,subs:[]},virtual:true,
+        gastado:deuda,presup:0,porSubs:false,conceptos:{[nom]:deuda}};
     }
 
     for(const k in out){
@@ -798,7 +817,7 @@ const calc={
   ingEsperadoDe(mes,f){ return Number(((mes||{}).presupuestosIng||{})[f])||0; },
   ingEsperado(k){ const m=store.mes(k); if(!m) return 0; return Object.values(m.presupuestosIng||{}).reduce((s,v)=>s+(Number(v)||0),0); },
   /* ingreso estimado: por fuente, lo mayor entre lo esperado y lo ya cobrado */
-  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+Math.max(f.esperado,f.monto),0); },
+  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?f.monto:Math.max(f.esperado,f.monto)),0); },
 
   porFuente(key){
     const m=store.mes(key); const acc={};
@@ -808,6 +827,11 @@ const calc={
       if(!acc[f]) acc[f]={nombre:f,monto:0,esperado:this.ingEsperadoDe(m,f),conceptos:{}};
       const v=Number(i.monto)||0; acc[f].monto+=v;
       const c=(i.concepto||f).trim(); acc[f].conceptos[c]=(acc[f].conceptos[c]||0)+v;
+    }
+    const sob=this.sobrante(key);
+    if(sob>0){
+      const prev=keyMas(key,-1), nom="Sobrante de "+MESES[Number(prev.split("-")[1])-1].toLowerCase();
+      acc[this.FUENTE_SOBRANTE]={nombre:this.FUENTE_SOBRANTE,monto:sob,esperado:0,virtual:true,conceptos:{[nom]:sob}};
     }
     return Object.values(acc)
       .map(f=>({...f,lista:Object.entries(f.conceptos).map(([nombre,monto])=>({nombre,monto})).sort((a,b)=>b.monto-a.monto)}))
@@ -1818,8 +1842,10 @@ const App={
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`${ingEsp>0?"Ingresos esperados":"Ingresos"} menos tus topes`)
         : est
         ? (sinTopes?`Sin topes en ${mesN}, es igual al real`:`Lo ya gastado más lo que falta gastar de cada tope`)
-        : (store.config.arrastre&&arr!==0
-          ? `${money(neto)} de este mes ${arr>=0?"+":"−"} ${money(Math.abs(arr))} que venías arrastrando`
+        : (calc.deuda(key)>0
+          ? `Incluye ${money(calc.deuda(key))} de deuda del mes anterior, como gasto`
+          : calc.sobrante(key)>0
+          ? `Incluye ${money(calc.sobrante(key))} que te sobraron el mes anterior, como ingreso`
           : `Ingresos menos gastos y ahorro de ${mesN}`)}</div>
       <div class="miniflow">
         <div><span class="k">${lblIng}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
@@ -1853,7 +1879,7 @@ const App={
     const ahorroMes=calc.invertido(key);
     if(conGasto.length||ahorroMes>0){
       /* el ahorro no es un gasto, pero sí plata que salió: va como una porción más */
-      const items=conGasto.map(c=>({id:c.cat.id,nombre:c.cat.nombre,monto:c.gastado,color:colorDe(c.cat.color)}));
+      const items=conGasto.map(c=>({id:c.virtual?null:c.cat.id,nombre:c.cat.nombre,monto:c.gastado,color:c.virtual?"var(--crit)":colorDe(c.cat.color)}));
       if(ahorroMes>0) items.push({id:null,nombre:"Ahorro",monto:ahorroMes,color:"var(--brand)"});
       const salio=gas+ahorroMes;
       h+=`<section class="card">
@@ -1947,6 +1973,11 @@ const App={
   },
 
   filaCategoria(c,totalMes){
+    if(c.virtual){
+      return `<div class="catrow deudarow">
+        <div class="cathead"><span class="catname"><i class="dot" style="background:var(--crit)"></i><span><b>${esc(c.cat.nombre)}</b><small class="secsub">lo que faltó el mes pasado · se calcula solo</small></span></span>
+          <span class="catnums"><span class="a num" style="color:var(--crit-ink)">${money(c.gastado)}</span><span class="b num">${totalMes>0?pct(c.gastado/totalMes*100)+" del mes":""}</span></span></div></div>`;
+    }
     const abierta=!!this.abiertas[c.cat.id], color=colorDe(c.cat.color);
     const p=c.presup>0?c.gastado/c.presup*100:null;
     /* la barra sigue al total; las etiquetas cuentan las partes: lo que te pasaste
@@ -2014,7 +2045,7 @@ const App={
         <button class="btn pri full" data-nuevo="ing">+ Cargar ingreso</button></section>`;
     }
 
-    const items=fuentes.filter(f=>f.monto>0).map(f=>({id:null,nombre:f.nombre,monto:f.monto,color:colorDe(fuentes.indexOf(f))}));
+    const items=fuentes.filter(f=>f.monto>0).map(f=>({id:null,nombre:f.nombre,monto:f.monto,color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
     let h=`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
         <span class="eyebrow">${fuentes.length} fuente${fuentes.length===1?"":"s"}</span></div>
@@ -2044,10 +2075,12 @@ const App={
 
   /* una fuente de ingreso: barra contra lo esperado y desglose por detalle al tocarla */
   filaFuente(f,i,total){
-    const clave="ing:"+f.nombre, abierta=!!this.abiertas[clave], color=colorDe(i);
-    const est=estadoTope(f.monto,f.esperado), fill=colorEstado(est,color);
+    const clave="ing:"+f.nombre, abierta=!!this.abiertas[clave], color=f.virtual?"var(--brand)":colorDe(i);
+    const est=estadoTope(f.monto,f.esperado), fill=f.virtual?color:colorEstado(est,color);
     const p=f.esperado>0?Math.min(f.monto/f.esperado*100,100):(total>0?f.monto/total*100:0);
-    const tag=f.esperado>0?`<span class="metertag tag-${est}">${textoEstado(est,f.monto,f.esperado)}</span>`
+    if(f.virtual) i=-1; /* color propio para el sobrante */
+    const tag=f.virtual?`<span class="metertag tag-ok">lo que sobró el mes pasado · se calcula solo</span>`
+      :f.esperado>0?`<span class="metertag tag-${est}">${textoEstado(est,f.monto,f.esperado)}</span>`
       :`<span class="metertag tag-none">Sin esperado</span>`;
     let subs="";
     if(abierta){
