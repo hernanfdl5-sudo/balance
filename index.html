@@ -212,7 +212,8 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .vcol.off{opacity:.35} .vcol.sel .bar{opacity:1;filter:brightness(1.08)}
 .vcol .bar{border-radius:4px 4px 2px 2px;min-height:3px;transition:height .5s cubic-bezier(.2,.7,.3,1)}
 .vcol .bar.dim{opacity:.45}
-.vcol .val{position:absolute;left:0;right:0;text-align:center;font-size:9.5px;font-weight:600;color:var(--ink-2);top:0}
+.vcol .val{position:absolute;left:-4px;right:-4px;text-align:center;font-size:8.5px;font-weight:600;color:var(--ink-3);top:2px;white-space:nowrap;letter-spacing:-.02em}
+.vcol .val.now{color:var(--ink);font-weight:700}
 .vaxis{display:flex;gap:4px;margin-top:6px}
 .vaxis span{flex:1;text-align:center;font-size:9.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;min-width:0;overflow:hidden}
 .vaxis span.now{color:var(--ink);font-weight:700}
@@ -429,7 +430,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-142859 -->
+<!-- build 20261001-143322 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1725,7 +1726,8 @@ const App={
     const iMax=serie.reduce((b,s,i)=>Math.abs(s.valor)>Math.abs(serie[b].valor)?i:b,0);
     const cols=serie.map((s,i)=>{
       const v=s.valor, h=Math.max(Math.abs(v)/max*100,v!==0?3:0), act=s.key===keyActual;
-      const et=(i===iMax||act)&&v!==0?`<span class="val num">${(v<0?"−":"")+moneyShort(Math.abs(v))}</span>`:"";
+      /* todas las barras llevan su valor abreviado; la del mes actual, resaltada */
+      const et=v!==0?`<span class="val num ${act?"now":""}">${(v<0?"−":"")+moneyShort(Math.abs(v))}</span>`:"";
       return `<button type="button" class="vcol" data-bar="${i}" data-nombre="${MESES[s.mes-1]} ${s.key.slice(0,4)}" data-monto="${v}" aria-label="${MESES[s.mes-1]}: ${money(v)}">${et}
         <div class="bar ${act?"":"dim"}" style="height:${h}%;background:${v<0?"var(--crit)":color}"></div></button>`;
     }).join("");
