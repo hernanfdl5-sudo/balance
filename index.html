@@ -444,7 +444,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-174239 -->
+<!-- build 20261001-174456 -->
 
 <div id="shell">
   <header id="topbar">
@@ -2480,22 +2480,12 @@ const App={
       h+=`<section class="hero" style="--hero-accent:${s.ganUsd==null?"var(--brand-ink)":s.ganUsd>=0?"var(--good-ink)":"var(--crit-ink)"}">
         <div class="lbl">Cripto · hoy tenés</div>
         <div class="big num">${usd(s.valUsd)}</div>
-        ${D?`<div class="big2 num">${money(s.valArs)}</div>`:""}
-        <div class="sub">${D?`Dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} hoy <b class="num">${O.moneyD(D)}</b> · `:""}actualizado ${cartera.hace(cartera.precios.ts)}</div>
+        <div class="sub">actualizado ${cartera.hace(cartera.precios.ts)}</div>
         <div class="story">
-          <div class="shead">En dólares</div>
           <div class="srow"><span>Pusiste</span><b class="num">${usd(s.costoUsd)}</b></div>
           <div class="srow"><span>Hoy tenés</span><b class="num">${usd(s.valUsd)}</b></div>
-          <div class="srow total ${cls(s.ganUsd)}"><span>${s.ganUsd==null?"Diferencia":s.ganUsd>=0?"Ganás":"Perdés"} por el precio</span><b class="num">${s.ganUsd==null?"—":signo(s.ganUsd,window.usd)}${s.ganUsd!=null&&s.costoUsd>0?` <small>${pctS(s.ganUsd/s.costoUsd*100)}</small>`:""}</b></div>
+          <div class="srow total ${cls(s.ganUsd)}"><span>${s.ganUsd==null?"Diferencia":s.ganUsd>=0?"Ganás":"Perdés"}</span><b class="num">${s.ganUsd==null?"—":signo(s.ganUsd,window.usd)}${s.ganUsd!=null&&s.costoUsd>0?` <small>${pctS(s.ganUsd/s.costoUsd*100)}</small>`:""}</b></div>
         </div>
-        ${D?`<div class="story">
-          <div class="shead">En pesos</div>
-          <div class="srow"><span>Pusiste</span><b class="num">${money(s.costoArs)}</b></div>
-          <div class="srow"><span>Hoy tenés</span><b class="num">${money(s.valArs)}</b></div>
-          <div class="srow total ${cls(g)}"><span>${g>=0?"Ganás":"Perdés"}</span><b class="num">${signo(g,window.money)}${s.costoArs>0?` <small>${pctS(g/s.costoArs*100)}</small>`:""}</b></div>
-          <div class="srow causa ${cls(gC)}"><span>por el precio de la cripto</span><b class="num">${gC==null?"—":signo(gC,window.money)}</b></div>
-          <div class="srow causa ${cls(fx)}"><span>por el dólar <small>compraste a ${s.costoUsd>0?O.moneyD(s.costoArs/s.costoUsd):"—"}</small></span><b class="num">${fx==null?"—":signo(fx,window.money)}</b></div>
-        </div>`:""}
       </section>`;
 
       /* composición + tabla de monedas */
@@ -2515,12 +2505,9 @@ const App={
           </button>
           ${abierta?`<div class="coindet">
             <div class="kpis tres">
-              <div><span class="k">Pagaste c/u</span><span class="num">${f.cant>0?usdPrecio(f.costoUsd/f.cant):"—"}</span><span class="num s">hoy ${f.px!=null?usdPrecio(f.px):"—"}</span></div>
-              <div><span class="k">Invertiste</span><span class="num">${usd(f.costoUsd)}</span><span class="num s">${money(f.costoArs)} en pesos</span></div>
-              <div><span class="k">Vale hoy</span><span class="num">${usd(f.valUsd)}</span><span class="num s">${D?money(f.valArs):"—"}</span></div>
-              <div><span class="k">Por el precio</span><span class="num ${cls(f.ganUsd)}">${f.ganUsd==null?"—":signo(f.ganUsd,window.usd)}</span><span class="num s ${cls(f.ganUsd)}">${f.costoUsd>0&&f.ganUsd!=null?pctS(f.ganUsd/f.costoUsd*100):""}</span></div>
-              <div><span class="k">Por el dólar</span><span class="num ${cls(f.ganFx)}">${f.ganFx==null?"—":signo(f.ganFx,window.money)}</span></div>
-              <div><span class="k">Total en pesos</span><span class="num ${cls(f.ganArs)}">${f.ganArs==null?"—":signo(f.ganArs,window.money)}</span><span class="num s ${cls(f.ganArs)}">${f.costoArs>0&&f.ganArs!=null?pctS(f.ganArs/f.costoArs*100):""}</span></div>
+              <div><span class="k">Pagaste c/u</span><span class="num">${f.cant>0?usdPrecio(f.costoUsd/f.cant):"—"}</span></div>
+              <div><span class="k">Precio hoy</span><span class="num">${f.px!=null?usdPrecio(f.px):"—"}</span></div>
+              <div><span class="k">Ganás</span><span class="num ${cls(f.ganUsd)}">${f.ganUsd==null?"—":signo(f.ganUsd,window.usd)}</span><span class="num s ${cls(f.ganUsd)}">${f.costoUsd>0&&f.ganUsd!=null?pctS(f.ganUsd/f.costoUsd*100):""}</span></div>
             </div></div>`:""}`;
         }).join("")+`</div></section>`;
       h+=this.graficoEvolucion("usd");
