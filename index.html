@@ -338,8 +338,22 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .hero .big2{font-family:"Instrument Serif",Georgia,serif;font-size:27px;line-height:1.05;letter-spacing:-.3px;color:var(--ink);margin:2px 0 6px;opacity:.92}
 .miniflow.tres{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 10px}
 .miniflow.dos{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
-.hero .monsel{padding:2px;border-radius:10px;flex:none}
-.hero .monsel button{padding:4px 12px;font-size:12px;border-radius:8px;flex:none}
+/* lectura paso a paso: pusiste → hoy tenés → diferencia, y sus causas */
+.story{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.story+.story{margin-top:12px}
+.shead{font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--ink-3);margin-bottom:2px}
+.srow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:14px}
+.srow span{color:var(--ink-2)} .srow b{font-weight:600;white-space:nowrap}
+.srow.total{font-size:15px;padding-top:6px;border-top:1px dashed var(--line-2);margin-top:2px}
+.srow.total span{color:inherit;font-weight:600} .srow.total b{font-weight:700;font-size:17px}
+.srow.total small{font-size:12px;font-weight:600;margin-left:4px}
+.srow.causa{font-size:13px;padding-left:14px;position:relative}
+.srow.causa::before{content:"↳";position:absolute;left:0;color:var(--ink-3)}
+.srow.causa span{color:var(--ink-3)} .srow.causa b{font-weight:600}
+.srow.causa span small{display:block;font-size:11px;color:var(--ink-3)}
+.srow.gain.total b,.srow.gain.causa b{color:var(--good-ink)} .srow.loss.total b,.srow.loss.causa b{color:var(--crit-ink)}
+.varia{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.tabla .tr .l small+small{margin-top:-2px}
 .ahorrorow{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 35%,transparent);margin-top:6px}
 .deudarow{background:var(--crit-soft);border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
 /* tabla mes a mes */
@@ -430,7 +444,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-143322 -->
+<!-- build 20261001-173649 -->
 
 <div id="shell">
   <header id="topbar">
@@ -988,6 +1002,14 @@ const cartera={
     for(const k in V.secciones){ const s=V.secciones[k]; V.totalArs+=s.valArs||0; V.totalUsd+=s.valUsd||0; }
     V.costoArs=(V.secciones.cripto?V.secciones.cripto.costoArs:0)+(V.secciones.usd?V.secciones.usd.costoArs:0)+(V.secciones.pesos?V.secciones.pesos.valArs:0);
     V.ganArs=D?V.totalArs-V.costoArs:null;
+    /* la diferencia en pesos, partida en sus dos causas:
+       precio de la cripto = (vale − pagaste, en US$) × dólar de hoy
+       dólar = los dólares que tenés o pusiste, al dólar de hoy menos lo que te costaron */
+    if(D){
+      const c=V.secciones.cripto, u=V.secciones.usd;
+      V.ganCriptoArs=c&&c.completo?(c.valUsd-c.costoUsd)*D:0;
+      V.ganDolarArs=(c?c.costoUsd*D-c.costoArs:0)+(u?u.cant*D-u.costoArs:0);
+    }else{ V.ganCriptoArs=null; V.ganDolarArs=null; }
     return V;
   },
 
@@ -2400,21 +2422,32 @@ const App={
     }else{
       const gan=V.ganArs, acc=gan==null?"var(--brand-ink)":gan>=0?"var(--good-ink)":"var(--crit-ink)";
       const ganU=V.secciones.cripto&&V.secciones.cripto.completo?V.gananciaUsdCripto:null;
+      const gC=V.ganCriptoArs, gD=V.ganDolarArs;
+      /* variación del valor de la cartera en el período elegido, por el movimiento de precios de las cripto */
+      const per=this.periodoCripto||"24h", PER={"24h":"24 h","7d":"7 días","30d":"30 días","1y":"1 año"};
+      let vP=0, baseP=0, hayP=false;
+      if(V.secciones.cripto) for(const f of V.secciones.cripto.filas){ const ch=f.chs?f.chs[per]:null; if(f.px!=null&&ch!=null){ const antes=f.valUsd/(1+ch/100); vP+=f.valUsd-antes; baseP+=antes; hayP=true; } }
       h+=`<section class="hero" style="--hero-accent:${acc}">
-        <div class="lbl" style="display:flex;justify-content:space-between;align-items:center">Tu cartera vale ${this.botonOjo()}</div>
+        <div class="lbl" style="display:flex;justify-content:space-between;align-items:center">Hoy tenés ${this.botonOjo()}</div>
         <div class="big num">${D?money(V.totalArs):usd(V.totalUsd)}</div>
         ${D?`<div class="big2 num">${usd(V.totalUsd)}</div>`:""}
         <div class="sub">${D?`Dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} ${O.moneyD(D)} · `:"Sin cotización del dólar · "}<button type="button" class="linkbtn" id="refrescarPrecios">${cartera.precios.cargando?"actualizando…":"actualizado "+cartera.hace(cartera.precios.ts)}</button></div>
-        <div class="miniflow tres">
-          <div><span class="k">Invertiste</span><span class="v num">${money(V.costoArs)}</span><span class="s num">en pesos</span></div>
-          <div><span class="k">Si vendieras hoy</span><span class="v num ${cls(gan)}">${gan==null?"—":signo(gan,window.money)}</span>
-            ${gan!=null&&V.costoArs>0?`<span class="s num ${cls(gan)}">${pctS(gan/V.costoArs*100)} en pesos</span>`:""}</div>
-          <div><span class="k">La cripto te dio</span><span class="v num ${cls(ganU)}">${ganU==null?"—":signo(ganU,window.usd)}</span>
-            ${ganU!=null&&V.secciones.cripto.costoUsd>0?`<span class="s num ${cls(ganU)}">${pctS(ganU/V.secciones.cripto.costoUsd*100)} en dólares</span>`:""}</div>
-        </div></section>`;
+        ${D&&V.costoArs>0?`
+        <div class="story">
+          <div class="srow"><span>Pusiste</span><b class="num">${money(V.costoArs)}</b></div>
+          <div class="srow"><span>Hoy tenés</span><b class="num">${money(V.totalArs)}</b></div>
+          <div class="srow total ${cls(gan)}"><span>${gan>=0?"Ganás":"Perdés"}</span><b class="num">${signo(gan,window.money)} <small>${pctS(gan/V.costoArs*100)}</small></b></div>
+          <div class="srow causa ${cls(gC)}"><span>por el precio de la cripto</span><b class="num">${signo(gC,window.money)}${ganU!=null?` <small>${signo(ganU,window.usd)}</small>`:""}</b></div>
+          <div class="srow causa ${cls(gD)}"><span>por el dólar</span><b class="num">${signo(gD,window.money)}</b></div>
+        </div>`:""}
+        ${V.secciones.cripto?`
+        <div class="varia">
+          <div class="segs mini" role="tablist">${Object.keys(PER).map(k=>`<button role="tab" data-per="${k}" aria-selected="${k===per}">${PER[k]}</button>`).join("")}</div>
+          <div class="sub" style="margin-top:8px">${hayP?`La cripto se movió <b class="${cls(vP)}">${signo(vP,window.usd)}${baseP>0?" ("+pctS(vP/baseP*100)+")":""}</b>${D?` ≈ <b class="${cls(vP)}">${signo(vP*D,window.money)}</b>`:""} en ${PER[per]}`:"Sin datos de precio para este período."}</div>
+        </div>`:""}
+      </section>`;
       if(V.sinPrecio.length) h+=`<div class="banner">Sin precio para ${V.sinPrecio.map(esc).join(", ")}. ${navigator.onLine?"Tocá “actualizado” para reintentar, o revisá el nombre de la moneda en la operación.":"Cuando tengas internet se actualiza solo."}</div>`;
       if(cartera.precios.error&&!D) h+=`<div class="banner">No pude traer las cotizaciones (${esc(cartera.precios.error)}). Los valores se muestran al costo.</div>`;
-      h+=this.graficoEvolucion("ars");
 
       const colorSec={cripto:"var(--c2)",usd:"var(--c3)",pesos:"var(--c4)"};
       const itemsPf=["cripto","usd","pesos"].filter(k=>V.secciones[k]).map(k=>({id:null,nombre:V.secciones[k].nombre,monto:D?(V.secciones[k].valArs||0):(V.secciones[k].valUsd||0),color:colorSec[k]}));
@@ -2433,13 +2466,8 @@ const App={
           <span class="secmeta"><b class="num">${this.priv?"••":pct(share)}</b> del portfolio${g!=null?` · <span class="num ${cls(g)}">${signo(g,window.money)}</span>`:""}</span></button>`;
       }
       h+=`</div></section>`;
+      h+=this.graficoEvolucion("ars");
     }
-
-    const serie=calc.serie(key,12,k=>calc.invertido(k));
-    if(serie.some(s=>s.valor>0))
-      h+=`<section class="card"><div class="sechead"><h2 class="sec">Apartado mes a mes</h2><span class="eyebrow">últimos 12</span></div>
-        ${this.barrasVerticales(serie,key,"var(--brand)")}
-        <p class="hint" style="margin:8px 0 0">Lo que sacaste del presupuesto de cada mes para la cartera.</p></section>`;
 
     if(P.cerradas.length) h+=this.bloqueCerradas(P,V);
     if(hay) h+=this.bloqueOperaciones(P,null);
@@ -2452,36 +2480,28 @@ const App={
     let h=`<div style="display:flex;justify-content:space-between;align-items:center"><button type="button" class="volver" id="volverAhorro">‹ Ahorro</button>${this.botonOjo()}</div>`;
 
     if(sec==="cripto"){
-      const fx=D?s.costoUsd*D-s.costoArs:null, g=s.ganArs;
-      const per=this.periodoCripto||"24h", PER={"24h":"24 h","7d":"7 días","30d":"30 días","1y":"1 año"};
-      /* variación del período: cuánto se movió el valor actual según el cambio de precio de cada moneda */
-      let vP=0, baseP=0, hayP=false;
-      for(const f of s.filas){ const ch=f.chs?f.chs[per]:null; if(f.px!=null&&ch!=null){ const antes=f.valUsd/(1+ch/100); vP+=f.valUsd-antes; baseP+=antes; hayP=true; } }
-      /* US$: sólo lo que depende de la cripto. $: se suma el efecto del dólar. */
-      const enArs=this.monedaCripto==="ars"&&!!D;
-      const ganCriptoArs=(D&&s.ganUsd!=null)?s.ganUsd*D:null;
-      const accHero=enArs?g:s.ganUsd;
-      h+=`<section class="hero" style="--hero-accent:${accHero==null?"var(--brand-ink)":accHero>=0?"var(--good-ink)":"var(--crit-ink)"}">
-        <div class="lbl" style="display:flex;justify-content:space-between;align-items:center">Cripto
-          ${D?`<span class="segs mini monsel" role="tablist"><button role="tab" data-mon="usd" aria-selected="${!enArs}">US$</button><button role="tab" data-mon="ars" aria-selected="${enArs}">$</button></span>`:""}</div>
-        <div class="big num">${enArs?money(s.valArs):usd(s.valUsd)}</div>
-        <div class="sub">${hayP?`${PER[per]}: <b class="${cls(vP)}">${enArs?signo(vP*D,window.money):signo(vP,window.usd)}${baseP>0?" ("+pctS(vP/baseP*100)+")":""}</b> · `:""}actualizado ${cartera.hace(cartera.precios.ts)}</div>
-        ${D?`<div class="sub" style="margin-top:2px">Dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} hoy <b class="num">${O.moneyD(D)}</b>${!enArs?` · ≈ ${money(s.valArs)}`:` · ≈ ${usd(s.valUsd)}`}</div>`:""}
-        <div class="segs mini" role="tablist" style="margin-top:10px">${Object.keys(PER).map(k=>`<button role="tab" data-per="${k}" aria-selected="${k===per}">${PER[k]}</button>`).join("")}</div>
-        ${enArs?`
-        <div class="miniflow tres">
-          <div><span class="k">Invertiste</span><span class="v num">${money(s.costoArs)}</span><span class="s num">${usd(s.costoUsd)}</span></div>
-          <div><span class="k">La cripto te dio</span><span class="v num ${cls(ganCriptoArs)}">${ganCriptoArs==null?"—":signo(ganCriptoArs,window.money)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctS(s.ganUsd/s.costoUsd*100)} de precio</span>`:""}</div>
-          <div><span class="k">El dólar te dio</span><span class="v num ${cls(fx)}">${fx==null?"—":signo(fx,window.money)}</span>${s.costoUsd>0?`<span class="s num">compraste a ${O.moneyD(s.costoArs/s.costoUsd)}</span>`:""}</div>
+      const fx=D?s.costoUsd*D-s.costoArs:null, g=s.ganArs, gC=(D&&s.ganUsd!=null)?s.ganUsd*D:null;
+      /* la cripto se compra y se mide en dólares: el encabezado va en US$, y abajo la lectura en pesos */
+      h+=`<section class="hero" style="--hero-accent:${s.ganUsd==null?"var(--brand-ink)":s.ganUsd>=0?"var(--good-ink)":"var(--crit-ink)"}">
+        <div class="lbl">Cripto · hoy tenés</div>
+        <div class="big num">${usd(s.valUsd)}</div>
+        ${D?`<div class="big2 num">${money(s.valArs)}</div>`:""}
+        <div class="sub">${D?`Dólar ${esc(cartera.precios.dolarNombre||cartera.d.dolar)} hoy <b class="num">${O.moneyD(D)}</b> · `:""}actualizado ${cartera.hace(cartera.precios.ts)}</div>
+        <div class="story">
+          <div class="shead">En dólares</div>
+          <div class="srow"><span>Pusiste</span><b class="num">${usd(s.costoUsd)}</b></div>
+          <div class="srow"><span>Hoy tenés</span><b class="num">${usd(s.valUsd)}</b></div>
+          <div class="srow total ${cls(s.ganUsd)}"><span>${s.ganUsd==null?"Diferencia":s.ganUsd>=0?"Ganás":"Perdés"} por el precio</span><b class="num">${s.ganUsd==null?"—":signo(s.ganUsd,window.usd)}${s.ganUsd!=null&&s.costoUsd>0?` <small>${pctS(s.ganUsd/s.costoUsd*100)}</small>`:""}</b></div>
         </div>
-        ${g!=null?`<div class="cointotal ${cls(g)}"><span>Si vendieras hoy</span><b class="num">${signo(g,window.money)}${s.costoArs>0?` (${pctS(g/s.costoArs*100)})`:""}</b></div>`:""}`
-        :`
-        <div class="miniflow dos">
-          <div><span class="k">Invertiste</span><span class="v num">${usd(s.costoUsd)}</span></div>
-          <div><span class="k">La cripto te dio</span><span class="v num ${cls(s.ganUsd)}">${s.ganUsd==null?"—":signo(s.ganUsd,window.usd)}</span>${s.ganUsd!=null&&s.costoUsd>0?`<span class="s num ${cls(s.ganUsd)}">${pctS(s.ganUsd/s.costoUsd*100)} de precio</span>`:""}</div>
-        </div>`}
+        ${D?`<div class="story">
+          <div class="shead">En pesos</div>
+          <div class="srow"><span>Pusiste</span><b class="num">${money(s.costoArs)}</b></div>
+          <div class="srow"><span>Hoy tenés</span><b class="num">${money(s.valArs)}</b></div>
+          <div class="srow total ${cls(g)}"><span>${g>=0?"Ganás":"Perdés"}</span><b class="num">${signo(g,window.money)}${s.costoArs>0?` <small>${pctS(g/s.costoArs*100)}</small>`:""}</b></div>
+          <div class="srow causa ${cls(gC)}"><span>por el precio de la cripto</span><b class="num">${gC==null?"—":signo(gC,window.money)}</b></div>
+          <div class="srow causa ${cls(fx)}"><span>por el dólar <small>compraste a ${s.costoUsd>0?O.moneyD(s.costoArs/s.costoUsd):"—"}</small></span><b class="num">${fx==null?"—":signo(fx,window.money)}</b></div>
+        </div>`:""}
       </section>`;
-      h+=this.graficoEvolucion("usd");
 
       /* composición + tabla de monedas */
       const filasOrd=s.filas.slice().sort((a,b)=>b.valUsd-a.valUsd);
@@ -2490,24 +2510,25 @@ const App={
         ${this.donut(itemsC,s.valUsd,"Cripto",usd(s.valUsd),"")}
         <div class="tabla" style="margin-top:8px">`
         + filasOrd.map((f,i)=>{
-          const abierta=!!this.abiertas["coin:"+f.sym], chP=f.chs?f.chs[per]:null;
+          const abierta=!!this.abiertas["coin:"+f.sym], ch=f.chs?f.chs["24h"]:f.ch;
           return `<button type="button" class="tr" data-coin="${esc(f.sym)}" aria-expanded="${abierta}">
             <span class="l"><span class="nom"><i class="dot" style="background:${colorDe(i)}"></i><b>${esc(f.sym)}</b>${s.valUsd>0?`<em class="pill">${pct(f.valUsd/s.valUsd*100)}</em>`:""}</span>
-              <small class="num">${f.px!=null?usdPrecio(f.px):"sin precio"}${chP!=null?` <span class="${cls(chP)}">${pctSigno(chP)}</span>`:""}</small></span>
-            <span class="r num"><b>${enArs?money(f.valArs):usd(f.valUsd)}</b><small>${cantidad(f.cant)} ${esc(f.sym)}</small>
-              ${enArs?`<small class="${cls(f.ganArs)}">${f.ganArs==null?"":signo(f.ganArs,window.money)+(f.costoArs>0?" ("+pctS(f.ganArs/f.costoArs*100)+")":"")}</small>`
-                    :`<small class="${cls(f.ganUsd)}">${f.ganUsd==null?"":signo(f.ganUsd,window.usd)+(f.costoUsd>0?" ("+pctS(f.ganUsd/f.costoUsd*100)+")":"")}</small>`}</span>
+              <small class="num">precio ${f.px!=null?usdPrecio(f.px):"—"}</small>
+              <small class="num">${ch!=null?`24 h <span class="${cls(ch)}">${pctSigno(ch)}</span>`:""}</small></span>
+            <span class="r num"><b>${usd(f.valUsd)}</b><small>${cantidad(f.cant)} ${esc(f.sym)}</small>
+              <small class="${cls(f.ganUsd)}">${f.ganUsd==null?"":"desde la compra "+signo(f.ganUsd,window.usd)+(f.costoUsd>0?" ("+pctS(f.ganUsd/f.costoUsd*100)+")":"")}</small></span>
           </button>
           ${abierta?`<div class="coindet">
             <div class="kpis tres">
               <div><span class="k">Pagaste c/u</span><span class="num">${f.cant>0?usdPrecio(f.costoUsd/f.cant):"—"}</span><span class="num s">hoy ${f.px!=null?usdPrecio(f.px):"—"}</span></div>
               <div><span class="k">Invertiste</span><span class="num">${usd(f.costoUsd)}</span><span class="num s">${money(f.costoArs)} en pesos</span></div>
               <div><span class="k">Vale hoy</span><span class="num">${usd(f.valUsd)}</span><span class="num s">${D?money(f.valArs):"—"}</span></div>
-              <div><span class="k">La cripto te dio</span><span class="num ${cls(f.ganUsd)}">${f.ganUsd==null?"—":signo(f.ganUsd,window.usd)}</span><span class="num s ${cls(f.ganUsd)}">${f.costoUsd>0&&f.ganUsd!=null?pctS(f.ganUsd/f.costoUsd*100):""}</span></div>
-              <div><span class="k">El dólar te dio</span><span class="num ${cls(f.ganFx)}">${f.ganFx==null?"—":signo(f.ganFx,window.money)}</span></div>
-              <div><span class="k">Si vendieras hoy</span><span class="num ${cls(f.ganArs)}">${f.ganArs==null?"—":signo(f.ganArs,window.money)}</span><span class="num s ${cls(f.ganArs)}">${f.costoArs>0&&f.ganArs!=null?pctS(f.ganArs/f.costoArs*100):""}</span></div>
+              <div><span class="k">Por el precio</span><span class="num ${cls(f.ganUsd)}">${f.ganUsd==null?"—":signo(f.ganUsd,window.usd)}</span><span class="num s ${cls(f.ganUsd)}">${f.costoUsd>0&&f.ganUsd!=null?pctS(f.ganUsd/f.costoUsd*100):""}</span></div>
+              <div><span class="k">Por el dólar</span><span class="num ${cls(f.ganFx)}">${f.ganFx==null?"—":signo(f.ganFx,window.money)}</span></div>
+              <div><span class="k">Total en pesos</span><span class="num ${cls(f.ganArs)}">${f.ganArs==null?"—":signo(f.ganArs,window.money)}</span><span class="num s ${cls(f.ganArs)}">${f.costoArs>0&&f.ganArs!=null?pctS(f.ganArs/f.costoArs*100):""}</span></div>
             </div></div>`:""}`;
         }).join("")+`</div></section>`;
+      h+=this.graficoEvolucion("usd");
     }
     else if(sec==="usd"){
       const g=s.ganArs;
