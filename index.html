@@ -340,6 +340,16 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .hero .monsel button{padding:4px 12px;font-size:12px;border-radius:8px;flex:none}
 .ahorrorow{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 35%,transparent);margin-top:6px}
 .deudarow{background:var(--crit-soft);border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
+/* tabla mes a mes */
+.hist{display:flex;flex-direction:column}
+.hist .hh,.hist .hr{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr 1fr;gap:6px;align-items:center;padding:8px 4px}
+.hist .hh{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:700;border-bottom:1px solid var(--line)}
+.hist .hh span:not(:first-child),.hist .hr span:not(:first-child){text-align:right}
+.hist .hr{font-size:12.5px;border-bottom:1px solid var(--line)}
+.hist .hr:last-child{border-bottom:none}
+.hist .hr span:first-child{font-weight:600;text-transform:capitalize}
+.hist .hr small{color:var(--ink-3);font-weight:500}
+.hist .hr.now{background:var(--surface-2);border-radius:8px}
 .cointotal span{flex:none;margin-right:10px}
 .cointotal b{text-align:right}
 .miniflow.tres .k{white-space:normal;line-height:1.25}
@@ -418,7 +428,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-135422 -->
+<!-- build 20261001-141242 -->
 
 <div id="shell">
   <header id="topbar">
@@ -456,7 +466,8 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 function money(n){return fmtMoney.format(Math.round(Number(n)||0));}
 function moneyShort(n){const a=Math.abs(n);
   if(a>=1e6)return (n/1e6).toLocaleString("es-AR",{maximumFractionDigits:1})+"M";
-  if(a>=1e3)return Math.round(n/1e3)+"k"; return String(Math.round(n));}
+  if(a>=1e4)return Math.round(n/1e3)+"k";
+  if(a>=1e3)return (n/1e3).toLocaleString("es-AR",{maximumFractionDigits:1})+"k"; return String(Math.round(n));}
 function pct(n){return (Math.round(n*10)/10).toLocaleString("es-AR",{maximumFractionDigits:1})+"%";}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function norm(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9ñ\s]/g," ").replace(/\s+/g," ").trim();}
@@ -1707,13 +1718,14 @@ const App={
   },
 
   barrasVerticales(serie,keyActual,color){
-    const max=Math.max(...serie.map(s=>s.valor),1);
-    const iMax=serie.reduce((b,s,i)=>s.valor>serie[b].valor?i:b,0);
+    /* los valores negativos se dibujan por su magnitud y en rojo */
+    const max=Math.max(...serie.map(s=>Math.abs(s.valor)),1);
+    const iMax=serie.reduce((b,s,i)=>Math.abs(s.valor)>Math.abs(serie[b].valor)?i:b,0);
     const cols=serie.map((s,i)=>{
-      const h=Math.max(s.valor/max*100,s.valor>0?3:0), act=s.key===keyActual;
-      const et=(i===iMax||act)&&s.valor>0?`<span class="val num">${moneyShort(s.valor)}</span>`:"";
-      return `<div class="vcol" title="${MESES[s.mes-1]}: ${money(s.valor)}">${et}
-        <div class="bar ${act?"":"dim"}" style="height:${h}%;background:${color}"></div></div>`;
+      const v=s.valor, h=Math.max(Math.abs(v)/max*100,v!==0?3:0), act=s.key===keyActual;
+      const et=(i===iMax||act)&&v!==0?`<span class="val num">${(v<0?"−":"")+moneyShort(Math.abs(v))}</span>`:"";
+      return `<div class="vcol" title="${MESES[s.mes-1]}: ${money(v)}">${et}
+        <div class="bar ${act?"":"dim"}" style="height:${h}%;background:${v<0?"var(--crit)":color}"></div></div>`;
     }).join("");
     return `<div class="vchart" role="img" aria-label="Barras por mes">
         <div class="gridline" style="top:18px"></div>
@@ -1860,9 +1872,10 @@ const App={
       <div class="segs" role="tablist">
         <button role="tab" data-sub="egresos" aria-selected="${this.sub==="egresos"}">Egresos</button>
         <button role="tab" data-sub="ingresos" aria-selected="${this.sub==="ingresos"}">Ingresos</button>
+        <button role="tab" data-sub="historial" aria-selected="${this.sub==="historial"}">Mes a mes</button>
       </div>`;
 
-    return h + (this.sub==="egresos"?this.panelEgresos(key):this.panelIngresos(key));
+    return h + (this.sub==="egresos"?this.panelEgresos(key):this.sub==="historial"?this.panelHistorial(key):this.panelIngresos(key));
   },
 
   panelEgresos(key){
@@ -1912,10 +1925,157 @@ const App={
       <div class="tot"><span>Total gastado</span><b class="num">${money(gas)}</b></div>
       ${ahorroMes>0?`<div class="tot" style="border-top:none;padding-top:2px;font-size:13px;color:var(--ink-2)"><span>Gastos + ahorro</span><b class="num" style="font-size:14px">${money(gas+ahorroMes)}</b></div>`:""}</section>`;
 
-    const serie=calc.serie(key,6,k=>calc.gastado(k));
-    if(serie.some(s=>s.valor>0)){
-      h+=`<section class="card"><div class="sechead"><h2 class="sec">Gasto por mes</h2>
-        <span class="eyebrow">últimos 6</span></div>${this.barrasVerticales(serie,key,"var(--c2)")}</section>`;
+    /* administración de categorías, a mano desde acá */
+    h+=`<section class="card"><div class="sechead"><h2 class="sec">Tus categorías</h2><span class="eyebrow">${store.config.cats.length}</span></div>
+      <p class="hint" style="margin:-4px 0 12px">Agregá, renombrá o borrá categorías y subcategorías. Los cambios aplican a todos los meses.</p>
+      <div class="row">
+        <button class="btn out" id="btnCats">Categorías</button>
+        <button class="btn out" id="btnSubs">Subcategorías</button>
+      </div></section>`;
+    return h;
+  },
+
+  /* ------------------------------------------- presupuestos (ventana) */
+  formPresupuestos(){
+    const m=store.mes(this.mes)||MES_DEF(), c=store.config, mesN=MESES[Number(this.mes.split("-")[1])-1];
+    const grupoIng=`<div class="pgrupo">
+      <div class="phead"><b><i class="dot" style="background:var(--good)"></i>Ingresos esperados</b>
+        <span class="tt"><small>Total</small><span class="num" data-total="__ing">${money(calc.ingEsperado(this.mes))}</span></span></div>
+      ${c.fuentes.map(f=>`<div class="psub"><span>${esc(f)}</span>
+        <input type="text" class="num" data-presup-ing="${esc(f)}" inputmode="numeric" value="${calc.ingEsperadoDe(m,f)?money(calc.ingEsperadoDe(m,f)):""}" placeholder="Sin esperado" aria-label="Ingreso esperado de ${esc(f)}"></div>`).join("")}
+    </div>`;
+    const grupos=c.cats.map(cat=>{
+      if(!(cat.subs&&cat.subs.length)) return `<div class="pgrupo"><div class="psub"><span><i class="dot" style="background:${colorDe(cat.color)}"></i>
+          <b style="font-weight:600;margin-left:7px">${esc(cat.nombre)}</b></span>
+          <input type="text" class="num" data-presup-cat="${esc(cat.id)}" inputmode="numeric" value="${(m.presupuestos||{})[cat.id]?money(m.presupuestos[cat.id]):""}" placeholder="Sin tope" aria-label="Tope de ${esc(cat.nombre)}"></div></div>`;
+      const t=calc.topeCat(m,cat);
+      return `<div class="pgrupo"><div class="phead"><b><i class="dot" style="background:${colorDe(cat.color)}"></i>${esc(cat.nombre)}</b>
+          <span class="tt"><small>Total</small><span class="num" data-total="${esc(cat.id)}">${money(t.monto)}</span></span></div>
+        ${cat.subs.map(s=>`<div class="psub"><span>${esc(s)}</span>
+          <input type="text" class="num" data-presup-sub="${esc(cat.id)}" data-sub="${esc(s)}" inputmode="numeric" value="${calc.topeSub(m,cat.id,s)?money(calc.topeSub(m,cat.id,s)):""}" placeholder="Sin tope" aria-label="Tope de ${esc(s)}"></div>`).join("")}
+      </div>`;
+    }).join("");
+    const cuerpo=`<p class="hint">Lo que esperás cobrar y lo que pensás gastar en ${mesN}. En las categorías con subcategorías el tope va en cada una y la categoría es la suma.</p>
+      ${grupoIng}${grupos}
+      <button type="button" class="btn out sm" id="copiarPresup" style="align-self:flex-start">Copiar los del mes anterior</button>`;
+
+    const body=this.hoja("Presupuestos de "+mesN,cuerpo,(b)=>{
+      const mm=store.ensureMes(this.mes);
+      mm.presupuestos=mm.presupuestos||{}; mm.presupuestosSub=mm.presupuestosSub||{}; mm.presupuestosIng=mm.presupuestosIng||{};
+      b.querySelectorAll("[data-presup-cat]").forEach(inp=>{ const n=this.leerMonto(inp.value); if(n>0) mm.presupuestos[inp.dataset.presupCat]=n; else delete mm.presupuestos[inp.dataset.presupCat]; });
+      b.querySelectorAll("[data-presup-sub]").forEach(inp=>{
+        const cid=inp.dataset.presupSub, s=inp.dataset.sub, n=this.leerMonto(inp.value);
+        mm.presupuestosSub[cid]=mm.presupuestosSub[cid]||{};
+        if(n>0) mm.presupuestosSub[cid][s]=n; else delete mm.presupuestosSub[cid][s];
+        if(!Object.keys(mm.presupuestosSub[cid]).length) delete mm.presupuestosSub[cid];
+        if(n>0) delete mm.presupuestos[cid];
+      });
+      b.querySelectorAll("[data-presup-ing]").forEach(inp=>{ const n=this.leerMonto(inp.value); if(n>0) mm.presupuestosIng[inp.dataset.presupIng]=n; else delete mm.presupuestosIng[inp.dataset.presupIng]; });
+      store.guardarMes(this.mes); this.toast("Presupuestos guardados.");
+    },null);
+
+    /* totales en vivo y formato al salir del campo */
+    const total=(sel,id)=>{ let t=0; body.querySelectorAll(sel).forEach(x=>{ t+=this.leerMonto(x.value); }); const o=body.querySelector(`[data-total="${CSS.escape(id)}"]`); if(o) o.textContent=money(t); };
+    body.querySelectorAll("[data-presup-sub]").forEach(inp=>{ inp.addEventListener("input",()=>total(`[data-presup-sub="${CSS.escape(inp.dataset.presupSub)}"]`,inp.dataset.presupSub)); });
+    body.querySelectorAll("[data-presup-ing]").forEach(inp=>{ inp.addEventListener("input",()=>total("[data-presup-ing]","__ing")); });
+    body.querySelectorAll("input.num").forEach(inp=>inp.addEventListener("change",()=>{ const n=this.leerMonto(inp.value); if(n>0&&inp.value.trim()) inp.value=money(n); }));
+    $("#copiarPresup",body).onclick=()=>{
+      const prev=store.mes(keyMas(this.mes,-1));
+      if(!prev) return this.toast("El mes anterior no tiene presupuestos.");
+      body.querySelectorAll("[data-presup-cat]").forEach(inp=>{ const v=(prev.presupuestos||{})[inp.dataset.presupCat]; inp.value=v?money(v):""; });
+      body.querySelectorAll("[data-presup-sub]").forEach(inp=>{ const v=((prev.presupuestosSub||{})[inp.dataset.presupSub]||{})[inp.dataset.sub]; inp.value=v?money(v):""; inp.dispatchEvent(new Event("input")); });
+      body.querySelectorAll("[data-presup-ing]").forEach(inp=>{ const v=(prev.presupuestosIng||{})[inp.dataset.presupIng]; inp.value=v?money(v):""; inp.dispatchEvent(new Event("input")); });
+      this.toast("Copiados. Tocá Guardar para aplicarlos.");
+    };
+  },
+
+  /* --------------------------------- categorías y subcategorías (ventanas) */
+  gestionCategorias(){
+    const pintar=()=>store.config.cats.map(cat=>`<div class="kv"><i class="dot" style="background:${colorDe(cat.color)}"></i>
+        <span class="g">${esc(cat.nombre)}<small>${(cat.subs&&cat.subs.length)?cat.subs.map(esc).join(" · "):"sin subcategorías"}</small></span>
+        <button type="button" class="x" data-edcat="${esc(cat.id)}" aria-label="Editar ${esc(cat.nombre)}">✎</button>
+        <button type="button" class="x d" data-delcat="${esc(cat.id)}" aria-label="Borrar ${esc(cat.nombre)}">×</button></div>`).join("");
+    const body=this.hoja("Categorías",`<p class="hint">El lápiz edita nombre, color y subcategorías. Borrar una categoría pasa sus gastos a otra.</p>
+      <div class="kvlist" id="listaCats">${pintar()}</div>
+      <button type="button" class="btn pri sm" id="addCat" style="align-self:flex-start">+ Nueva categoría</button>`,()=>true,null);
+    $("#shOk",body).textContent="Listo";
+    const enlazar=()=>{
+      body.querySelectorAll("[data-edcat]").forEach(b=>b.onclick=()=>{ $("#sheet").close(); this.editarCat(b.dataset.edcat); });
+      body.querySelectorAll("[data-delcat]").forEach(b=>b.onclick=()=>{ this.borrarCat(b.dataset.delcat); $("#listaCats",body).innerHTML=pintar(); enlazar(); });
+      $("#addCat",body).onclick=()=>{ $("#sheet").close(); this.editarCat(null); };
+    };
+    enlazar();
+  },
+
+  gestionSubcategorias(){
+    const cats=store.config.cats; if(!cats.length) return this.toast("Primero creá una categoría.");
+    let cid=this.ultimaCatSubs&&store.cat(this.ultimaCatSubs)?this.ultimaCatSubs:cats[0].id;
+    const body=this.hoja("Subcategorías",`
+      <label class="f" for="subCat">Categoría<select id="subCat">${cats.map(c=>`<option value="${c.id}" ${c.id===cid?"selected":""}>${esc(c.nombre)}</option>`).join("")}</select></label>
+      <div class="kvlist" id="listaSubs"></div>
+      <div class="subedit"><input type="text" id="subNuevo" placeholder="Nueva subcategoría"><button type="button" class="btn out sm" id="subAgregar" style="flex:0 0 auto">Agregar</button></div>
+      <p class="hint">Renombrar una subcategoría arrastra sus gastos y topes. Borrarla no borra gastos: quedan con el nombre que tenían.</p>`,()=>true,null);
+    $("#shOk",body).textContent="Listo";
+    const lista=$("#listaSubs",body), sel=$("#subCat",body);
+    const pintar=()=>{
+      const cat=store.cat(cid); const subs=cat.subs||[];
+      lista.innerHTML=subs.length?subs.map((s,i)=>`<div class="kv"><span class="g">${esc(s)}</span>
+          <button type="button" class="x" data-subed="${i}" aria-label="Renombrar">✎</button>
+          <button type="button" class="x d" data-subdel="${i}" aria-label="Quitar">×</button></div>`).join("")
+        :`<div class="hint">${esc(cat.nombre)} no tiene subcategorías todavía.</div>`;
+      lista.querySelectorAll("[data-subed]").forEach(b=>b.onclick=()=>{
+        const i=Number(b.dataset.subed), viejo=cat.subs[i], n=prompt("Nombre de la subcategoría:",viejo);
+        if(!n||!n.trim()||n.trim()===viejo) return;
+        const nuevo=titulizar(n.trim()); cat.subs[i]=nuevo;
+        for(const k in store.meses){ const mm=store.meses[k]; let toco=false;
+          mm.gastos.forEach(g=>{ if(g.cat===cat.id&&norm(g.concepto)===norm(viejo)){ g.concepto=nuevo; toco=true; } });
+          const ps=(mm.presupuestosSub||{})[cat.id]; if(ps&&ps[viejo]!==undefined){ ps[nuevo]=ps[viejo]; delete ps[viejo]; toco=true; }
+          if(toco) store.guardarMes(k); }
+        store.guardarConfig(); pintar();
+      });
+      lista.querySelectorAll("[data-subdel]").forEach(b=>b.onclick=()=>{
+        const i=Number(b.dataset.subdel), s=cat.subs[i];
+        if(!confirm(`¿Quitar "${s}" de ${cat.nombre}?`)) return;
+        cat.subs.splice(i,1);
+        for(const k in store.meses){ const ps=(store.meses[k].presupuestosSub||{})[cat.id]; if(ps&&ps[s]!==undefined){ delete ps[s]; store.guardarMes(k); } }
+        store.guardarConfig(); pintar();
+      });
+    };
+    sel.onchange=()=>{ cid=sel.value; this.ultimaCatSubs=cid; pintar(); };
+    const agregar=()=>{
+      const inp=$("#subNuevo",body), t=inp.value.trim(); if(!t) return;
+      const cat=store.cat(cid); cat.subs=cat.subs||[];
+      if(cat.subs.some(s=>norm(s)===norm(t))) return this.toast("Esa subcategoría ya está.");
+      cat.subs.push(titulizar(t)); inp.value=""; store.guardarConfig(); pintar(); inp.focus();
+    };
+    $("#subAgregar",body).onclick=agregar;
+    $("#subNuevo",body).onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); agregar(); } };
+    pintar();
+  },
+
+  /* ------------------------------------------------------------ MES A MES */
+  panelHistorial(key){
+    const SER={ingresos:{nom:"Ingresos",fn:k=>calc.ingresosReales(k),color:"var(--good)"},
+      gastos:{nom:"Gastos",fn:k=>calc.gastadoReal(k),color:"var(--crit)"},
+      ahorro:{nom:"Ahorro",fn:k=>calc.invertido(k),color:"var(--warn)"},
+      sobrante:{nom:"Sobrante",fn:k=>calc.ingresosReales(k)-calc.gastadoReal(k)-calc.invertido(k),color:"var(--brand)"}};
+    const sel=SER[this.serieHist]?this.serieHist:"gastos";
+    const serie=calc.serie(key,12,SER[sel].fn);
+    const conDatos=calc.serie(key,12,k=>k).filter(s=>{ const m=store.mes(s.key); return m&&(m.gastos.length||m.ingresos.length||m.inversiones.length); });
+    let h=`<section class="card">
+      <div class="sechead"><h2 class="sec">${SER[sel].nom} por mes</h2><span class="eyebrow">últimos 12</span></div>
+      <div class="segs mini" role="tablist" style="margin-bottom:12px">${Object.keys(SER).map(k=>`<button role="tab" data-hs="${k}" aria-selected="${k===sel}">${SER[k].nom}</button>`).join("")}</div>
+      ${this.barrasVerticales(serie,key,SER[sel].color)}
+      ${sel==="sobrante"?`<p class="hint" style="margin:8px 0 0">Ingresos menos gastos menos ahorro de cada mes, sin contar lo que vino del mes anterior. En rojo, los meses que cerraron en negativo.</p>`:""}
+    </section>`;
+    if(conDatos.length){
+      h+=`<section class="card"><div class="sechead"><h2 class="sec">Detalle</h2><span class="eyebrow">${conDatos.length} mes${conDatos.length===1?"":"es"}</span></div>
+        <div class="hist"><div class="hh"><span>Mes</span><span>Ingresos</span><span>Gastos</span><span>Ahorro</span><span>Sobrante</span></div>`
+        + conDatos.slice().reverse().map(s=>{ const i=calc.ingresosReales(s.key),g=calc.gastadoReal(s.key),a=calc.invertido(s.key),r=i-g-a;
+          return `<div class="hr ${s.key===key?"now":""}"><span>${MESES_CORTO[s.mes-1]} <small>${s.key.slice(2,4)}</small></span>
+            <span class="num gain">${moneyShort(i)}</span><span class="num" style="color:var(--crit-ink)">${moneyShort(g)}</span>
+            <span class="num" style="color:var(--warn-ink)">${moneyShort(a)}</span><span class="num ${r>=0?"gain":"loss"}">${(r<0?"−":"")+moneyShort(Math.abs(r))}</span></div>`; }).join("")
+        + `</div><p class="hint" style="margin:10px 0 0">Montos abreviados (k = mil, M = millón).</p></section>`;
     }
     return h;
   },
@@ -2065,11 +2225,6 @@ const App={
           <span class="amt num in">+${money(i.monto)}</span></button>`).join("")
       + `</div><button class="btn pri full" data-nuevo="ing" style="margin-top:12px">+ Cargar ingreso</button></section>`;
 
-    const serie=calc.serie(key,6,k=>calc.ingresos(k));
-    if(serie.filter(s=>s.valor>0).length>1){
-      h+=`<section class="card"><div class="sechead"><h2 class="sec">Ingresos por mes</h2>
-        <span class="eyebrow">últimos 6</span></div>${this.barrasVerticales(serie,key,"var(--good)")}</section>`;
-    }
     return h;
   },
 
@@ -2084,12 +2239,18 @@ const App={
       :`<span class="metertag tag-none">Sin esperado</span>`;
     let subs="";
     if(abierta){
-      const max=f.lista.length?f.lista[0].monto:1;
-      const cuerpo=f.lista.length?f.lista.map((s,j)=>`<div class="subrow">
-          <div class="top"><span>${esc(s.nombre)}</span><span class="num">${money(s.monto)}<em>${f.monto>0?pct(s.monto/f.monto*100):""}</em></span></div>
-          <div class="subbar"><i style="width:${Math.max(s.monto/max*100,3)}%;background:${color};opacity:${Math.max(1-j*.12,.4)}"></i></div>
-        </div>`).join(""):`<div class="hint">Todavía no cobraste nada de esta fuente.</div>`;
-      subs=`<div class="subs">${cuerpo}</div>`;
+      if(f.virtual){
+        subs=`<div class="subs"><div class="hint">${esc(f.lista[0]?f.lista[0].nombre:"")}: ingresos menos gastos y ahorro del mes pasado. No se edita acá; si corregís el mes anterior, cambia solo.</div></div>`;
+      }else{
+        /* cada ingreso de esta fuente se toca para editar el monto */
+        const m=store.mes(this.mes), movs=(m?m.ingresos:[]).filter(i=>(i.fuente||"Otros").trim()===f.nombre).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+        const cuerpo=movs.length?`<div class="movs">${movs.map(i=>`<button type="button" class="mov" data-edit="ing:${i.id}">
+            <span class="bar" style="background:${color}"></span>
+            <span class="txt"><b>${esc(i.concepto||f.nombre)}</b><span>${esc(fechaCorta(i.fecha))} · tocá para editar</span></span>
+            <span class="amt num in">+${money(i.monto)}</span></button>`).join("")}</div>`
+          :`<div class="hint">Todavía no cargaste nada de ${esc(f.nombre)} este mes.</div>`;
+        subs=`<div class="subs">${cuerpo}<button type="button" class="btn out sm" data-nuevo-ing="${esc(f.nombre)}" style="align-self:flex-start;margin-top:4px">+ Cargar ${esc(f.nombre)}</button></div>`;
+      }
     }
     return `<div class="catrow ${abierta?"open":""}">
       <button type="button" class="cathead" data-fuente="${esc(f.nombre)}" aria-expanded="${abierta}">
@@ -2556,57 +2717,6 @@ const App={
       <span class="eyebrow">${(m.gastos||[]).length+(m.ingresos||[]).length+(m.inversiones||[]).length}</span></summary>
       <div class="body">${this.bloqueMovimientos(true)}</div></details>
 
-    <details class="set" id="setPresup"><summary>Presupuestos de ${MESES[Number(this.mes.split("-")[1])-1]}
-      <span class="eyebrow num">${money(calc.presupuesto(this.mes))}</span></summary>
-      <div class="body">
-        <p class="hint">Lo que esperás cobrar y lo que pensás gastar. En las categorías con subcategorías el tope va en cada una,
-          y la categoría es la suma.</p>
-        <div class="pgrupo">
-          <div class="phead"><b><i class="dot" style="background:var(--good)"></i>Ingresos esperados</b>
-            <span class="tt"><small>Total</small><span class="num" data-total="__ing">${money(calc.ingEsperado(this.mes))}</span></span></div>
-          ${c.fuentes.map(f=>`<div class="psub"><span>${esc(f)}</span>
-            <input type="text" class="num" data-presup-ing="${esc(f)}" inputmode="numeric"
-              value="${esc(((this.presupDraft||{})["i|"+f]!==undefined)?(this.presupDraft||{})["i|"+f]:(calc.ingEsperadoDe(m,f)?money(calc.ingEsperadoDe(m,f)):""))}"
-              placeholder="Sin esperado" aria-label="Ingreso esperado de ${esc(f)}"></div>`).join("")}
-        </div>
-        ${c.cats.map(cat=>{
-          const tiene=cat.subs&&cat.subs.length;
-          /* lo tipeado y todavía no guardado se conserva en memoria (presupDraft) */
-          const dr=this.presupDraft||{};
-          const val=(k,guardado)=> dr[k]!==undefined ? dr[k] : (guardado?money(guardado):"");
-          if(!tiene) return `<div class="pgrupo">
-            <div class="psub"><span><i class="dot" style="background:${colorDe(cat.color)}"></i>
-              <b style="font-weight:600;margin-left:7px">${esc(cat.nombre)}</b></span>
-              <input type="text" class="num" data-presup-cat="${esc(cat.id)}" inputmode="numeric"
-                value="${esc(val("c|"+cat.id,(m.presupuestos||{})[cat.id]))}"
-                placeholder="Sin tope" aria-label="Tope de ${esc(cat.nombre)}"></div></div>`;
-          const t=calc.topeCat(m,cat);
-          return `<div class="pgrupo" data-grupo="${esc(cat.id)}">
-            <div class="phead"><b><i class="dot" style="background:${colorDe(cat.color)}"></i>${esc(cat.nombre)}</b>
-              <span class="tt"><small>Total</small><span class="num" data-total="${esc(cat.id)}">${money(t.monto)}</span></span></div>
-            ${cat.subs.map(s=>`<div class="psub"><span>${esc(s)}</span>
-                <input type="text" class="num" data-presup-sub="${esc(cat.id)}" data-sub="${esc(s)}"
-                  inputmode="numeric" value="${esc(val("s|"+cat.id+"|"+s,calc.topeSub(m,cat.id,s)))}" placeholder="Sin tope"
-                  aria-label="Tope de ${esc(s)}"></div>`).join("")}
-          </div>`;
-        }).join("")}
-        <button class="btn pri" id="guardarPresup">Guardar presupuestos</button>
-        <button class="btn out sm" id="copiarPresup">Copiar los del mes anterior</button>
-      </div></details>
-
-    <details class="set"><summary>Categorías y subcategorías <span class="eyebrow">${c.cats.length}</span></summary>
-      <div class="body">
-        <p class="hint">Tocá el lápiz para cambiarle el nombre, el color y sus subcategorías.</p>
-        <div class="kvlist">${c.cats.map(cat=>`
-          <div class="kv"><i class="dot" style="background:${colorDe(cat.color)}"></i>
-            <span class="g">${esc(cat.nombre)}
-              <small>${(cat.subs&&cat.subs.length)?cat.subs.map(esc).join(" · "):"sin subcategorías"}</small></span>
-            <button class="x" data-edcat="${esc(cat.id)}" aria-label="Editar ${esc(cat.nombre)}">✎</button>
-            <button class="x d" data-delcat="${esc(cat.id)}" aria-label="Borrar ${esc(cat.nombre)}">×</button>
-          </div>`).join("")}</div>
-        <button class="btn pri sm" id="addCat">+ Nueva categoría</button>
-      </div></details>
-
     <details class="set"><summary>Fuentes de ingreso <span class="eyebrow">${c.fuentes.length}</span></summary>
       <div class="body">
         <p class="hint">De dónde te entra la plata. Es lo que desglosa la pestaña Ingresos.</p>
@@ -2617,13 +2727,6 @@ const App={
         <button class="btn out sm" id="addFuente">+ Nueva fuente</button>
       </div></details>
 
-    <details class="set"><summary>Cartera</summary>
-      <div class="body">
-        <label class="f" for="selDolar">Dólar para pasar a pesos
-          <select id="selDolar">${[["cripto","Dólar cripto"],["blue","Dólar blue"],["bolsa","Dólar MEP / bolsa"],["contadoconliqui","Contado con liqui"],["oficial","Dólar oficial"],["tarjeta","Dólar tarjeta"]].map(([v,l])=>`<option value="${v}" ${cartera.d.dolar===v?"selected":""}>${l}</option>`).join("")}</select></label>
-        <p class="hint">Cotizaciones: CoinGecko (cripto) y DolarAPI (dólar). Se actualizan al entrar a Ahorro y quedan guardadas para verlas sin conexión.</p>
-      </div></details>
-
     <details class="set"><summary>Destinos de ahorro <span class="eyebrow">${c.instrumentos.length}</span></summary>
       <div class="body">
         <div class="kvlist">${c.instrumentos.map((f,i)=>`
@@ -2631,24 +2734,6 @@ const App={
             <button class="x" data-edinstr="${i}" aria-label="Renombrar">✎</button>
             <button class="x d" data-delinstr="${i}" aria-label="Quitar">×</button></div>`).join("")}</div>
         <button class="btn out sm" id="addInstr">+ Nuevo destino</button>
-      </div></details>
-
-    <details class="set"><summary>Gastos fijos <span class="eyebrow">${(c.fijos||[]).length}</span></summary>
-      <div class="body">
-        <p class="hint">Alquiler, expensas, gimnasio. Se cargan solos cuando se prepara un mes nuevo, y después los editás o borrás.</p>
-        <div class="kvlist">${(c.fijos||[]).length?c.fijos.map((f,i)=>{
-          const cat=store.cat(f.cat);
-          return `<div class="kv"><span class="g">${esc(f.concepto)} · <b class="num">${money(f.monto)}</b>
-            <small>${esc(cat?cat.nombre:"—")}</small></span>
-            <button class="x d" data-delfijo="${i}" aria-label="Quitar">×</button></div>`;
-        }).join(""):`<div class="hint">Todavía no cargaste ninguno.</div>`}</div>
-        <button class="btn out sm" id="addFijo">+ Nuevo gasto fijo</button>
-      </div></details>
-
-    <details class="set"><summary>Compras en cuotas</summary>
-      <div class="body">
-        <p class="hint">Cargá el total y la cantidad de cuotas: se imputa una cuota en cada mes, así los meses que vienen ya aparecen con ese gasto comprometido.</p>
-        <button class="btn out sm" id="addCuota">+ Nueva compra en cuotas</button>
       </div></details>
 
     <details class="set"><summary>Palabras que aprendió <span class="eyebrow">${propios.length}</span></summary>
@@ -2712,7 +2797,14 @@ const App={
 
     v.querySelectorAll("[data-sub]").forEach(b=>b.onclick=()=>{this.sub=b.dataset.sub;this.render();});
     v.querySelectorAll("[data-hero]").forEach(b=>b.onclick=()=>{this.heroModo=b.dataset.hero;this.render();});
-    v.querySelectorAll("[data-fuente]").forEach(b=>b.onclick=()=>{const k="ing:"+b.dataset.fuente;this.abiertas[k]=!this.abiertas[k];this.render();});
+    v.querySelectorAll("[data-fuente]").forEach(b=>b.onclick=()=>{
+      const f=b.dataset.fuente, k="ing:"+f, m=store.mes(this.mes);
+      const tiene=f===calc.FUENTE_SOBRANTE||(m&&m.ingresos.some(i=>(i.fuente||"Otros").trim()===f));
+      /* sin nada cargado, directo al formulario con la fuente elegida */
+      if(!tiene) return this.editar("ing",null,{fuente:f,concepto:f});
+      this.abiertas[k]=!this.abiertas[k]; this.render();
+    });
+    v.querySelectorAll("[data-nuevo-ing]").forEach(b=>b.onclick=()=>this.editar("ing",null,{fuente:b.dataset.nuevoIng,concepto:b.dataset.nuevoIng}));
 
     /* cartera */
     v.querySelectorAll("#nuevaOp").forEach(b=>b.onclick=()=>this.formOperacion(null));
@@ -2743,10 +2835,10 @@ const App={
     v.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null));
     v.querySelectorAll("[data-fmov]").forEach(b=>b.onclick=()=>{this.filtroMov=b.dataset.fmov;this.render();});
     v.querySelectorAll("[data-vegr]").forEach(b=>b.onclick=()=>{this.vistaEgr=b.dataset.vegr;this.render();});
-    v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>{
-      this.volverA=this.tab; this.tab="ajustes"; this.pintarTabs(); this.render();
-      const d=$("#setPresup"); if(d){ d.open=true; d.scrollIntoView({behavior:"smooth",block:"start"}); }
-    });
+    v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>this.formPresupuestos());
+    const bc=$("#btnCats"); if(bc) bc.onclick=()=>this.gestionCategorias();
+    const bs=$("#btnSubs"); if(bs) bs.onclick=()=>this.gestionSubcategorias();
+    v.querySelectorAll("[data-hs]").forEach(b=>b.onclick=()=>{this.serieHist=b.dataset.hs;this.render();});
 
     const sw=$("#swArrastre"); if(sw) sw.onchange=()=>{store.config.arrastre=sw.checked;store.guardarConfig();};
 
@@ -3041,7 +3133,7 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
     return body;
   },
 
-  editar(tipo,id){
+  editar(tipo,id,pre){
     /* se vuelve a buscar el mes y el movimiento en el momento de guardar:
        mientras el formulario está abierto pueden llegar datos nuevos del servidor */
     const col=tipo==="gasto"?"gastos":tipo==="ing"?"ingresos":"inversiones";
@@ -3050,7 +3142,7 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
     if(id&&!it) return this.toast("Ese movimiento ya no existe.");
     const nuevo=!it;
     const d=it||{monto:0,fecha:(hoyISO().startsWith(this.mes)?hoyISO():this.mes+"-01"),concepto:"",
-      cat:(store.config.cats[0]||{}).id,fuente:store.config.fuentes[0]||"",instrumento:""};
+      cat:(store.config.cats[0]||{}).id,fuente:store.config.fuentes[0]||"",instrumento:"",...(pre||{})};
     const t=tipo==="gasto"?"gasto":tipo==="ing"?"ingreso":"ahorro";
 
     const cats=store.config.cats.map(c=>`<option value="${c.id}" ${c.id===d.cat?"selected":""}>${esc(c.nombre)}</option>`).join("");
