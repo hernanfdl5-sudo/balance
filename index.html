@@ -429,7 +429,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-142127 -->
+<!-- build 20261001-142859 -->
 
 <div id="shell">
   <header id="topbar">
@@ -2100,10 +2100,12 @@ const App={
 
   /* ------------------------------------------------------------ MES A MES */
   panelHistorial(key){
-    const SER={ingresos:{nom:"Ingresos",fn:k=>calc.ingresosReales(k),color:"var(--good)"},
-      gastos:{nom:"Gastos",fn:k=>calc.gastadoReal(k),color:"var(--crit)"},
+    /* mismos números que el Resumen: los ingresos traen el sobrante del mes anterior
+       y los gastos la deuda, así octubre muestra lo mismo arriba y acá */
+    const SER={ingresos:{nom:"Ingresos",fn:k=>calc.ingresos(k),color:"var(--good)"},
+      gastos:{nom:"Gastos",fn:k=>calc.gastado(k),color:"var(--crit)"},
       ahorro:{nom:"Ahorro",fn:k=>calc.invertido(k),color:"var(--warn)"},
-      sobrante:{nom:"Sobrante",fn:k=>calc.ingresosReales(k)-calc.gastadoReal(k)-calc.invertido(k),color:"var(--brand)"}};
+      sobrante:{nom:"Sobrante",fn:k=>calc.neto(k),color:"var(--brand)"}};
     const sel=SER[this.serieHist]?this.serieHist:"gastos";
     const serie=calc.serie(key,12,SER[sel].fn);
     const conDatos=calc.serie(key,12,k=>k).filter(s=>{ const m=store.mes(s.key); return m&&(m.gastos.length||m.ingresos.length||m.inversiones.length); });
@@ -2111,12 +2113,13 @@ const App={
       <div class="sechead"><h2 class="sec">${SER[sel].nom} por mes</h2><span class="eyebrow">últimos 12</span></div>
       <div class="segs mini" role="tablist" style="margin-bottom:12px">${Object.keys(SER).map(k=>`<button role="tab" data-hs="${k}" aria-selected="${k===sel}">${SER[k].nom}</button>`).join("")}</div>
       ${this.barrasVerticales(serie,key,SER[sel].color)}
-      ${sel==="sobrante"?`<p class="hint" style="margin:8px 0 0">Ingresos menos gastos menos ahorro de cada mes, sin contar lo que vino del mes anterior. En rojo, los meses que cerraron en negativo.</p>`:""}
+      <p class="hint" style="margin:8px 0 0">${sel==="sobrante"?"Ingresos menos gastos menos ahorro de cada mes. En rojo, los que cerraron en negativo."
+        :sel==="ingresos"?"Incluye el sobrante que vino del mes anterior.":sel==="gastos"?"Incluye la deuda que vino del mes anterior.":"Lo que apartaste del presupuesto de cada mes."} Tocá una barra para ver el importe.</p>
     </section>`;
     if(conDatos.length){
       h+=`<section class="card"><div class="sechead"><h2 class="sec">Detalle</h2><span class="eyebrow">${conDatos.length} mes${conDatos.length===1?"":"es"}</span></div>
         <div class="hist"><div class="hh"><span>Mes</span><span>Ingresos</span><span>Gastos</span><span>Ahorro</span><span>Sobrante</span></div>`
-        + conDatos.slice().reverse().map(s=>{ const i=calc.ingresosReales(s.key),g=calc.gastadoReal(s.key),a=calc.invertido(s.key),r=i-g-a;
+        + conDatos.slice().reverse().map(s=>{ const i=calc.ingresos(s.key),g=calc.gastado(s.key),a=calc.invertido(s.key),r=i-g-a;
           return `<div class="hr ${s.key===key?"now":""}"><span>${MESES_CORTO[s.mes-1]} <small>${s.key.slice(2,4)}</small></span>
             <span class="num gain">${moneyShort(i)}</span><span class="num" style="color:var(--crit-ink)">${moneyShort(g)}</span>
             <span class="num" style="color:var(--warn-ink)">${moneyShort(a)}</span><span class="num ${r>=0?"gain":"loss"}">${(r<0?"−":"")+moneyShort(Math.abs(r))}</span></div>`; }).join("")
@@ -2776,9 +2779,23 @@ const App={
           <button class="btn pri sm" id="activarLock">Activar bloqueo</button>`}
       </div></details>
 
-    <details class="set" id="setAlertas"><summary>Alertas de ${MESES[Number(this.mes.split("-")[1])-1]}
-      <span class="eyebrow">${(()=>{const a=calc.alertas(this.mes);return a.sinCargar.length+" sin cargar";})()}</span></summary>
-      <div class="body">${this.bloqueAlertas()}</div></details>
+    ${(()=>{ const a=calc.alertas(this.mes), mesN=MESES[Number(this.mes.split("-")[1])-1];
+      const fila=(f,der,est)=>`<div class="alrow"><i class="dot" style="background:${f.ing?"var(--good)":colorDe(f.cat.color)}"></i>
+        <span class="g"><b>${esc(f.nombre||f.cat.nombre)}</b>${f.nombre?`<small>${esc(f.cat.nombre)}</small>`:""}</span><span class="num r ${est}">${der}</span></div>`;
+      const vacio=t=>`<p class="hint">${t}</p>`;
+      const disponible=a.conSaldo.filter(f=>!f.ing).reduce((s,f)=>s+(f.tope-f.gastado),0);
+      return `
+    <details class="set" id="setAlertas"><summary>Sin cargar <span class="eyebrow">${a.sinCargar.length}</span></summary>
+      <div class="body"><p class="hint">Tienen tope o esperado en ${mesN} pero nada cargado. Si ya pasó, cargalo.</p>
+        ${a.sinCargar.length?`<div class="allist">${a.sinCargar.map(f=>fila(f,(f.ing?"esperado ":"tope ")+money(f.tope),"none")).join("")}</div>`:vacio("Todo lo que tiene tope ya tiene algo cargado.")}</div></details>
+
+    <details class="set"><summary>Exceso <span class="eyebrow">${a.pasados.length}</span></summary>
+      <div class="body"><p class="hint">Subcategorías que ya pasaron su tope este mes.</p>
+        ${a.pasados.length?`<div class="allist">${a.pasados.map(f=>fila(f,"+"+money(f.gastado-f.tope),"crit")).join("")}</div>`:vacio("Nada pasado del tope.")}</div></details>
+
+    <details class="set"><summary>Saldo disponible <span class="eyebrow num">${money(disponible)}</span></summary>
+      <div class="body"><p class="hint">Lo que todavía podés gastar en cada una sin pasarte del tope.</p>
+        ${a.conSaldo.length?`<div class="allist">${a.conSaldo.map(f=>fila(f,(f.ing?"faltan ":"quedan ")+money(f.tope-f.gastado),"ok")).join("")}</div>`:vacio("Sin saldo pendiente en ninguna.")}</div></details>`; })()}
 
     <details class="set"><summary>Palabras que aprendió <span class="eyebrow">${propios.length}</span></summary>
       <div class="body">
