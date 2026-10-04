@@ -353,6 +353,9 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .srow.causa span small{display:block;font-size:11px;color:var(--ink-3)}
 .srow.gain.total b,.srow.gain.causa b{color:var(--good-ink)} .srow.loss.total b,.srow.loss.causa b{color:var(--crit-ink)}
 .varia{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.desglose{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin:4px 0 6px;font-size:13px;color:var(--ink-2)}
+.desglose b{font-weight:700;color:var(--ink);font-size:14px}
+.desglose .sep{color:var(--ink-3)}
 .tabla .tr .l small+small{margin-top:-2px}
 .ahorrorow{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 35%,transparent);margin-top:6px}
 .deudarow{background:var(--crit-soft);border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
@@ -444,7 +447,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261004-121915 -->
+<!-- build 20261004-122625 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1909,6 +1912,8 @@ const App={
       </div>
       <div class="lbl">${lbl}</div>
       <div class="big num">${money(Math.abs(final))}</div>
+      ${modo==="real"&&!sinSueldo?(()=>{ const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=Math.max(ingEsp-calc.ingresosReales(key),0);
+        return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>`; })():""}
       <div class="sub">${proy
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes, lo que ya te pasaste y lo ahorrado${sob>0?", con el sobrante anterior":""}`)
         : mano ? `Lo que retiraste menos gastos y ahorro${notaSob}`
