@@ -444,7 +444,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261001-174842 -->
+<!-- build 20261004-114641 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1073,13 +1073,16 @@ const STOP=new Set(["de","en","para","por","del","la","el","los","las","un","una
   "gastamos","gasto","pague","pagamos","compre","compramos","puse","me","se","fue","fui","que","y","con","sobre",
   "a","lo","le","mi","tipo","como","tambien","ademas","pesos","peso","mangos","guita","plata","total","aprox",
   "aproximadamente","mas","o","menos","salio","costo","valio","hoy","ayer","este","esta","cobre","cobramos",
-  "pagaron","recibi","vendi","deposite","meti","saque","guarde","ahorre","inverti","pusimos","despues","luego"]);
+  "pagaron","recibi","vendi","deposite","meti","saque","guarde","ahorre","inverti","pusimos","despues","luego",
+  "retire","retiramos","retiro","agarre","agarramos","adelanto","tome"]);
 
 const VERBOS_ARRANQUE=new Set(["gaste","gastamos","pague","pagamos","compre","compramos","puse","pusimos","guarde",
   "ahorre","ahorramos","inverti","invertimos","cobre","cobramos","entro","entraron","vendi","deposite","meti","recibi",
   "saque","pagaron","gasto","pago","compra","despues","luego","tambien","ademas"]);
 
-const ING_RE=/\b(cobre|cobramos|ingreso|ingresaron|sueldo|aguinaldo|ganancias|ganancia|me pagaron|pagaron|entro|entraron|factura|honorarios|vendi|vendimos|deposito|depositaron|bono|freelance|changa)\b/;
+/* retirar plata del sueldo es cobrar una parte: entra como ingreso de la primera fuente */
+const RET_RE=/\b(retire|retiramos|retiro|agarre|agarramos|saque del sueldo|saque de mi sueldo|tome del sueldo|adelanto)\b/;
+const ING_RE=/\b(retire|retiramos|retiro|agarre|agarramos|adelanto|cobre|cobramos|ingreso|ingresaron|sueldo|aguinaldo|ganancias|ganancia|me pagaron|pagaron|entro|entraron|factura|honorarios|vendi|vendimos|deposito|depositaron|bono|freelance|changa)\b/;
 const INV_RE=/\b(ahorre|ahorramos|inverti|inversion|guarde|plazo fijo|compre dolares|compre dolar|dolares|usd|cripto|bitcoin|usdt|cedear|cedears|acciones|fci|fondo comun|mep)\b/;
 
 function parseMonedaAR(txt){
@@ -1251,7 +1254,9 @@ function interpretar(frase){
       else { item.cat=(store.config.cats[store.config.cats.length-1]||{id:"otros"}).id; item.dudoso=true; item.recordar=true; }
       if(!item.concepto) item.concepto="Sin detalle";
     }else if(tipo==="ing"){
+      const esRetiro=RET_RE.test(p.regionTxt)||(pend.length===1&&RET_RE.test(plano));
       item.fuente=buscarFuente(p.regionTxt)||(pend.length===1?buscarFuente(plano):null)||store.config.fuentes[0]||"Sueldo";
+      if(esRetiro&&(!item.concepto||/^(sueldo|plata|mi sueldo)$/.test(norm(item.concepto)))) item.concepto="Retiro del sueldo";
       if(!item.concepto) item.concepto=item.fuente;
     }else{
       item.instrumento=buscarInstrumento(p.regionTxt)||(pend.length===1?buscarInstrumento(plano):null)||"";
@@ -1573,6 +1578,7 @@ const App={
     bar.innerHTML=`<div class="inner">
       <div class="atajos">
         <button type="button" data-nuevo="gasto">+ Gasto</button>
+        <button type="button" data-nuevo="ing" data-retiro="1">+ Retiro de sueldo</button>
         <button type="button" data-nuevo="ing">+ Ingreso</button>
         <button type="button" data-nuevo="inv">+ Ahorro</button>
       </div>
@@ -1582,7 +1588,8 @@ const App={
         ${voz?`<button type="button" class="cbtn" id="micBtn" aria-label="Dictar"></button>`:""}
       </div></div>`;
     bar.dataset.listo="1";
-    bar.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null));
+    bar.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null,
+      b.dataset.retiro?{fuente:store.config.fuentes[0]||"Sueldo",concepto:"Retiro del sueldo"}:null));
     const ta=$("#txtEntrada"), send=$("#sendBtn"), mic=$("#micBtn");
     const sync=()=>{
       const hay=ta.value.trim().length>0;
@@ -1874,41 +1881,36 @@ const App={
   /* --------------------------------------------------------------- RESUMEN */
   vistaResumen(){
     const key=this.mes, mesN=MESES[Number(key.split("-")[1])-1].toLowerCase();
-    const modo=this.heroModo||"real", proy=modo==="proy", est=modo==="est";
+    const modo=this.heroModo==="proy"?"proy":"real", proy=modo==="proy";
     const inv=calc.invertido(key), ingReal=calc.ingresos(key), ingEsp=calc.ingEsperado(key);
-    /* Real: lo gastado y lo cobrado. Proyectado: topes e ingresos esperados (un mes normal).
-       Estimado: por rubro, lo mayor entre lo previsto y lo que ya pasó */
-    /* el sobrante del mes anterior cuenta como ingreso y la deuda como gasto en los tres modos */
+    /* Real: lo que cobraste (más el sobrante anterior) menos gastos y ahorro = la plata que tenés.
+       Proyectado: ingresos esperados menos tus topes = cómo debería cerrar el mes. */
     const sob=Math.max(calc.sobrante(key),0), deu=calc.deuda(key);
-    const ing=proy?((ingEsp>0?ingEsp:calc.ingresosReales(key))+sob):est?calc.ingEstimado(key):ingReal;
-    const gas=proy?calc.presupuesto(key)+deu:est?calc.estimado(key):calc.gastado(key);
-    const lblIng=proy&&ingEsp>0?"Ingresos esperados":est?"Ingresos estimados":"Ingresos";
-    const arr=calc.arrastre(key),neto=ing-gas-inv,final=neto+arr;
+    const ing=proy?((ingEsp>0?ingEsp:calc.ingresosReales(key))+sob):ingReal;
+    const gas=proy?calc.presupuesto(key)+deu:calc.gastado(key);
+    const final=proy?ing-gas:ing-gas-inv;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
-    const lbl=(proy||est)?(final>=0?"Te sobraría":"Te faltarían"):(final>=0?"Plata disponible":"Estás en rojo por");
+    const lbl=proy?(final>=0?"Te sobraría":"Te faltarían"):(final>=0?"Plata disponible":"Estás en rojo por");
     const sinTopes=calc.presupuesto(key)===0;
 
     let h=`<section class="hero" style="--hero-accent:${acc}">
       <div class="segs mini" role="tablist" style="margin-bottom:14px">
-        <button role="tab" data-hero="real" aria-selected="${modo==="real"}">Real</button>
+        <button role="tab" data-hero="real" aria-selected="${!proy}">Real</button>
         <button role="tab" data-hero="proy" aria-selected="${proy}">Proyectado</button>
-        <button role="tab" data-hero="est" aria-selected="${est}">Estimado</button>
       </div>
       <div class="lbl">${lbl}</div>
       <div class="big num">${money(Math.abs(final))}</div>
       <div class="sub">${proy
-        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`${ingEsp>0?"Ingresos esperados":"Ingresos"} menos tus topes`)
-        : est
-        ? (sinTopes?`Sin topes en ${mesN}, es igual al real`:`Lo ya gastado más lo que falta gastar de cada tope`)
-        : (calc.deuda(key)>0
-          ? `Incluye ${money(calc.deuda(key))} de deuda del mes anterior, como gasto`
-          : calc.sobrante(key)>0
-          ? `Incluye ${money(calc.sobrante(key))} que te sobraron el mes anterior, como ingreso`
-          : `Ingresos menos gastos y ahorro de ${mesN}`)}</div>
-      <div class="miniflow">
-        <div><span class="k">${lblIng}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
-        <div><span class="k">${proy?"Gastos proyectados":est?"Gastos estimados":"Gastos"}</span><span class="v num" style="color:var(--crit-ink)">${gas>0?"−":""}${money(gas)}</span></div>
-        <div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${money(inv)}</span></div>
+        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`${ingEsp>0?"Ingresos esperados":"Ingresos"} menos tus topes${sob>0?", con el sobrante anterior":""}`)
+        : (deu>0
+          ? `Lo que cobraste menos gastos y ahorro · incluye ${money(deu)} de deuda del mes anterior`
+          : sob>0
+          ? `Lo que cobraste menos gastos y ahorro · incluye ${money(sob)} que sobraron el mes anterior`
+          : `Lo que cobraste menos gastos y ahorro de ${mesN}`)}</div>
+      <div class="miniflow${proy?" dos":""}">
+        <div><span class="k">${proy&&ingEsp>0?"Ingresos esperados":proy?"Ingresos":"Cobraste"}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
+        <div><span class="k">${proy?"Gastos proyectados":"Gastos"}</span><span class="v num" style="color:var(--crit-ink)">${gas>0?"−":""}${money(gas)}</span></div>
+        ${proy?"":`<div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${inv>0?"−":""}${money(inv)}</span></div>`}
       </div></section>
 
       <div class="segs" role="tablist">
@@ -2300,7 +2302,7 @@ const App={
     const p=f.esperado>0?Math.min(f.monto/f.esperado*100,100):(total>0?f.monto/total*100:0);
     if(f.virtual) i=-1; /* color propio para el sobrante */
     const tag=f.virtual?`<span class="metertag tag-ok">lo que sobró el mes pasado · se calcula solo</span>`
-      :f.esperado>0?`<span class="metertag tag-${est}">${textoEstado(est,f.monto,f.esperado)}</span>`
+      :f.esperado>0?`<span class="metertag tag-${est}">${est==="warn"?`cobraste ${pct(f.monto/f.esperado*100)} · faltan ${money(f.esperado-f.monto)}`:textoEstado(est,f.monto,f.esperado)}</span>`
       :`<span class="metertag tag-none">Sin esperado</span>`;
     let subs="";
     if(abierta){
