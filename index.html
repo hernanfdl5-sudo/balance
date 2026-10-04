@@ -444,7 +444,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261004-114641 -->
+<!-- build 20261004-120421 -->
 
 <div id="shell">
   <header id="topbar">
@@ -707,7 +707,11 @@ const calc={
     const prev=keyMas(k,-1); if(!store.mes(prev)) return 0;
     return this.neto(prev);
   },
+  /* lo cobrado hasta ahora (retiros) más el sobrante anterior: la plata en mano */
   ingresos(k){ const s=this.sobrante(k); return this.ingresosReales(k)+(s>0?s:0); },
+  /* el ingreso del mes entero: el sueldo esperado (si está cargado) más el sobrante anterior.
+     Es lo que usan Real, Proyectado, el cierre del mes y Mes a mes. */
+  ingresoMes(k){ const s=this.sobrante(k), e=this.ingEsperado(k); return (e>0?e:this.ingresosReales(k))+(s>0?s:0); },
   FUENTE_SOBRANTE:"Sobrante del mes anterior",
   invertido(k){const m=store.mes(k);return m?m.inversiones.reduce((s,g)=>s+(Number(g.monto)||0),0):0;},
   /* tope de una subcategoría */
@@ -738,7 +742,7 @@ const calc={
   },
   /* resultado del mes: ingresos (con el sobrante anterior) menos gastos y ahorro,
      menos lo que haya faltado el mes anterior */
-  neto(k){ return this.ingresos(k)-this.gastado(k)-this.invertido(k); },
+  neto(k){ return this.ingresoMes(k)-this.gastado(k)-this.invertido(k); },
 
   /* qué topes del mes siguen sin gasto, cuáles tienen saldo y cuáles se pasaron */
   alertas(key){
@@ -1881,34 +1885,37 @@ const App={
   /* --------------------------------------------------------------- RESUMEN */
   vistaResumen(){
     const key=this.mes, mesN=MESES[Number(key.split("-")[1])-1].toLowerCase();
-    const modo=this.heroModo==="proy"?"proy":"real", proy=modo==="proy";
-    const inv=calc.invertido(key), ingReal=calc.ingresos(key), ingEsp=calc.ingEsperado(key);
-    /* Real: lo que cobraste (más el sobrante anterior) menos gastos y ahorro = la plata que tenés.
-       Proyectado: ingresos esperados menos tus topes = cómo debería cerrar el mes. */
+    const modo=["real","proy","mano"].includes(this.heroModo)?this.heroModo:"real", proy=modo==="proy", mano=modo==="mano";
+    const inv=calc.invertido(key), ingEsp=calc.ingEsperado(key);
+    /* Real: todo el sueldo del mes (más el sobrante anterior) menos gastos y ahorro = lo que te queda del sueldo.
+       Proyectado: el sueldo menos tus topes = cómo debería cerrar el mes.
+       En mano: lo que retiraste (más el sobrante anterior) menos gastos y ahorro = lo que tenés encima. */
     const sob=Math.max(calc.sobrante(key),0), deu=calc.deuda(key);
-    const ing=proy?((ingEsp>0?ingEsp:calc.ingresosReales(key))+sob):ingReal;
+    const ing=mano?calc.ingresos(key):calc.ingresoMes(key);
     const gas=proy?calc.presupuesto(key)+deu:calc.gastado(key);
     const final=proy?ing-gas:ing-gas-inv;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
-    const lbl=proy?(final>=0?"Te sobraría":"Te faltarían"):(final>=0?"Plata disponible":"Estás en rojo por");
-    const sinTopes=calc.presupuesto(key)===0;
+    const lbl=proy?(final>=0?"Te sobraría":"Te faltarían"):mano?(final>=0?"Plata en mano":"Gastaste más de lo que retiraste"):(final>=0?"Te queda del sueldo":"Estás en rojo por");
+    const sinTopes=calc.presupuesto(key)===0, sinSueldo=ingEsp===0;
+    const notaSob=deu>0?` · incluye ${money(deu)} de deuda del mes anterior`:sob>0?` · incluye ${money(sob)} que sobraron el mes anterior`:"";
 
     let h=`<section class="hero" style="--hero-accent:${acc}">
       <div class="segs mini" role="tablist" style="margin-bottom:14px">
-        <button role="tab" data-hero="real" aria-selected="${!proy}">Real</button>
+        <button role="tab" data-hero="real" aria-selected="${modo==="real"}">Real</button>
         <button role="tab" data-hero="proy" aria-selected="${proy}">Proyectado</button>
+        <button role="tab" data-hero="mano" aria-selected="${mano}">En mano</button>
       </div>
       <div class="lbl">${lbl}</div>
       <div class="big num">${money(Math.abs(final))}</div>
       <div class="sub">${proy
-        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`${ingEsp>0?"Ingresos esperados":"Ingresos"} menos tus topes${sob>0?", con el sobrante anterior":""}`)
-        : (deu>0
-          ? `Lo que cobraste menos gastos y ahorro · incluye ${money(deu)} de deuda del mes anterior`
-          : sob>0
-          ? `Lo que cobraste menos gastos y ahorro · incluye ${money(sob)} que sobraron el mes anterior`
-          : `Lo que cobraste menos gastos y ahorro de ${mesN}`)}</div>
+        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes${sob>0?", con el sobrante anterior":""}`)
+        : mano ? `Lo que retiraste menos gastos y ahorro${notaSob}`
+        : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>
+      ${!mano&&sinSueldo?`<div class="banner" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span>Falta cargar cuánto es tu sueldo de ${mesN}. Mientras tanto uso lo que retiraste.</span>
+        <button type="button" class="btn sm" data-iresp="1" style="flex:none;background:var(--warn);color:#2a1d00">Cargar</button></div>`:""}
       <div class="miniflow${proy?" dos":""}">
-        <div><span class="k">${proy&&ingEsp>0?"Ingresos esperados":proy?"Ingresos":"Cobraste"}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
+        <div><span class="k">${mano?"Retiraste":sinSueldo?"Cobraste":"Sueldo del mes"}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
         <div><span class="k">${proy?"Gastos proyectados":"Gastos"}</span><span class="v num" style="color:var(--crit-ink)">${gas>0?"−":""}${money(gas)}</span></div>
         ${proy?"":`<div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${inv>0?"−":""}${money(inv)}</span></div>`}
       </div></section>
@@ -2128,7 +2135,7 @@ const App={
   panelHistorial(key){
     /* mismos números que el Resumen: los ingresos traen el sobrante del mes anterior
        y los gastos la deuda, así octubre muestra lo mismo arriba y acá */
-    const SER={ingresos:{nom:"Ingresos",fn:k=>calc.ingresos(k),color:"var(--good)"},
+    const SER={ingresos:{nom:"Ingresos",fn:k=>calc.ingresoMes(k),color:"var(--good)"},
       gastos:{nom:"Gastos",fn:k=>calc.gastado(k),color:"var(--crit)"},
       ahorro:{nom:"Ahorro",fn:k=>calc.invertido(k),color:"var(--warn)"},
       sobrante:{nom:"Sobrante",fn:k=>calc.neto(k),color:"var(--brand)"}};
@@ -2140,12 +2147,12 @@ const App={
       <div class="segs mini" role="tablist" style="margin-bottom:12px">${Object.keys(SER).map(k=>`<button role="tab" data-hs="${k}" aria-selected="${k===sel}">${SER[k].nom}</button>`).join("")}</div>
       ${this.barrasVerticales(serie,key,SER[sel].color)}
       <p class="hint" style="margin:8px 0 0">${sel==="sobrante"?"Ingresos menos gastos menos ahorro de cada mes. En rojo, los que cerraron en negativo."
-        :sel==="ingresos"?"Incluye el sobrante que vino del mes anterior.":sel==="gastos"?"Incluye la deuda que vino del mes anterior.":"Lo que apartaste del presupuesto de cada mes."} Tocá una barra para ver el importe.</p>
+        :sel==="ingresos"?"El sueldo de cada mes (lo esperado), más el sobrante que vino del mes anterior.":sel==="gastos"?"Incluye la deuda que vino del mes anterior.":"Lo que apartaste del presupuesto de cada mes."} Tocá una barra para ver el importe.</p>
     </section>`;
     if(conDatos.length){
       h+=`<section class="card"><div class="sechead"><h2 class="sec">Detalle</h2><span class="eyebrow">${conDatos.length} mes${conDatos.length===1?"":"es"}</span></div>
         <div class="hist"><div class="hh"><span>Mes</span><span>Ingresos</span><span>Gastos</span><span>Ahorro</span><span>Sobrante</span></div>`
-        + conDatos.slice().reverse().map(s=>{ const i=calc.ingresos(s.key),g=calc.gastado(s.key),a=calc.invertido(s.key),r=i-g-a;
+        + conDatos.slice().reverse().map(s=>{ const i=calc.ingresoMes(s.key),g=calc.gastado(s.key),a=calc.invertido(s.key),r=i-g-a;
           return `<div class="hr ${s.key===key?"now":""}"><span>${MESES_CORTO[s.mes-1]} <small>${s.key.slice(2,4)}</small></span>
             <span class="num gain">${moneyShort(i)}</span><span class="num" style="color:var(--crit-ink)">${moneyShort(g)}</span>
             <span class="num" style="color:var(--warn-ink)">${moneyShort(a)}</span><span class="num ${r>=0?"gain":"loss"}">${(r<0?"−":"")+moneyShort(Math.abs(r))}</span></div>`; }).join("")
