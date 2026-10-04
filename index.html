@@ -444,7 +444,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261004-120421 -->
+<!-- build 20261004-121240 -->
 
 <div id="shell">
   <header id="topbar">
@@ -1893,7 +1893,7 @@ const App={
     const sob=Math.max(calc.sobrante(key),0), deu=calc.deuda(key);
     const ing=mano?calc.ingresos(key):calc.ingresoMes(key);
     const gas=proy?calc.presupuesto(key)+deu:calc.gastado(key);
-    const final=proy?ing-gas:ing-gas-inv;
+    const final=ing-gas-inv;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
     const lbl=proy?(final>=0?"Te sobraría":"Te faltarían"):mano?(final>=0?"Plata en mano":"Gastaste más de lo que retiraste"):(final>=0?"Te queda del sueldo":"Estás en rojo por");
     const sinTopes=calc.presupuesto(key)===0, sinSueldo=ingEsp===0;
@@ -1908,16 +1908,16 @@ const App={
       <div class="lbl">${lbl}</div>
       <div class="big num">${money(Math.abs(final))}</div>
       <div class="sub">${proy
-        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes${sob>0?", con el sobrante anterior":""}`)
+        ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes y lo que ya ahorraste${sob>0?", con el sobrante anterior":""}`)
         : mano ? `Lo que retiraste menos gastos y ahorro${notaSob}`
         : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>
       ${!mano&&sinSueldo?`<div class="banner" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
         <span>Falta cargar cuánto es tu sueldo de ${mesN}. Mientras tanto uso lo que retiraste.</span>
         <button type="button" class="btn sm" data-iresp="1" style="flex:none;background:var(--warn);color:#2a1d00">Cargar</button></div>`:""}
-      <div class="miniflow${proy?" dos":""}">
+      <div class="miniflow">
         <div><span class="k">${mano?"Retiraste":sinSueldo?"Cobraste":"Sueldo del mes"}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
         <div><span class="k">${proy?"Gastos proyectados":"Gastos"}</span><span class="v num" style="color:var(--crit-ink)">${gas>0?"−":""}${money(gas)}</span></div>
-        ${proy?"":`<div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${inv>0?"−":""}${money(inv)}</span></div>`}
+        <div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${inv>0?"−":""}${money(inv)}</span></div>
       </div></section>
 
       <div class="segs" role="tablist">
