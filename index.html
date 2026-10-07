@@ -183,6 +183,17 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .tag-crit{background:var(--crit-soft);color:var(--crit-ink)}
 .tag-none{background:var(--surface-3);color:var(--ink-3)}
 .tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px}
+/* botón para dar por cerrada una categoría o subcategoría en el mes */
+.cerrar{display:inline-flex;align-items:center;gap:4px;padding:3px 10px 3px 7px;border-radius:999px;border:1px solid var(--line-2);
+  background:var(--surface);color:var(--ink-2);font-size:11.5px;font-weight:600;line-height:1.4;flex:none;white-space:nowrap}
+.cerrar svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;opacity:.45}
+.cerrar.on{background:var(--good-soft);color:var(--good-ink);border-color:transparent}
+.cerrar.on svg{opacity:1}
+.cerrar.todas{align-self:flex-start;margin-top:4px}
+.tags .cerrar{margin-left:auto}
+.subfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:3px}
+.subfoot .subtag{margin-top:0;min-width:0}
+.metertag.total{font-weight:700}
 .tags .metertag{margin-top:0}
 .pctlbl{font-size:11.5px;font-weight:700;color:var(--ink-2);padding:2px 2px 2px 0}
 .subs{display:flex;flex-direction:column;gap:9px;margin-top:13px;padding-top:12px;border-top:1px dashed var(--line-2)}
@@ -447,7 +458,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261004-122625 -->
+<!-- build 20261007-122657 -->
 
 <div id="shell">
   <header id="topbar">
@@ -754,10 +765,12 @@ const calc={
     for(const c of store.config.cats){
       const b=cats[c.id]; if(!b) continue;
       const filas=b.porSubs
-        ? b.lista.filter(x=>x.tope>0).map(x=>({cat:c,nombre:x.nombre,tope:x.tope,gastado:x.monto}))
-        : (b.presup>0?[{cat:c,nombre:null,tope:b.presup,gastado:b.gastado}]:[]);
+        ? b.lista.filter(x=>x.tope>0).map(x=>({cat:c,nombre:x.nombre,tope:x.tope,gastado:x.monto,cerrada:x.cerrada}))
+        : (b.presup>0?[{cat:c,nombre:null,tope:b.presup,gastado:b.gastado,cerrada:b.cerrada}]:[]);
       for(const f of filas){
         const e=estadoTope(f.gastado,f.tope);
+        /* una cerrada sólo avisa si se pasó del tope */
+        if(f.cerrada&&e!=="crit") continue;
         if(f.gastado<=0) sinCargar.push(f);
         else if(e==="warn") conSaldo.push(f);
         else if(e==="crit") pasados.push(f);
@@ -780,11 +793,14 @@ const calc={
   estimado(k){
     const cats=this.porCategoria(k); let t=0;
     for(const c of Object.values(cats)){
-      if(c.porSubs) t+=c.lista.reduce((s,x)=>s+Math.max(x.tope||0,x.monto||0),0);
-      else t+=Math.max(c.presup||0,c.gastado||0);
+      /* en las cerradas cuenta lo que realmente pagaste */
+      if(c.porSubs) t+=c.lista.reduce((s,x)=>s+(x.cerrada?(x.monto||0):Math.max(x.tope||0,x.monto||0)),0);
+      else t+=c.cerrada?(c.gastado||0):Math.max(c.presup||0,c.gastado||0);
     }
     return t;
   },
+  /* suma de topes, usando lo pagado en las categorías/subcategorías cerradas por debajo del tope */
+  presupuestoEf(k){ return Object.values(this.porCategoria(k)).reduce((s,c)=>s+(c.presupEf||0),0); },
 
   /* el sobrante viaja como ingreso y la deuda como gasto: ya no hay arrastre aparte */
   arrastre(k){ return 0; },
@@ -817,11 +833,13 @@ const calc={
       for(const n in c.conceptos) gastadoPorSub[norm(n)]=(gastadoPorSub[norm(n)]||0)+c.conceptos[n];
 
       /* primero las subcategorías definidas (aunque estén en cero, si tienen tope) */
+      /* "cerrada" = ya no se paga más este mes: no queda nada por pagar ahí */
+      const cer=(m&&m.cerradas)||{};
       const filas=[];
       for(const s of subs){
         const tope=this.topeSub(m,c.cat.id,s);
         const monto=gastadoPorSub[norm(s)]||0;
-        if(tope>0||monto>0) filas.push({nombre:s,monto,tope,definida:true});
+        if(tope>0||monto>0) filas.push({nombre:s,monto,tope,definida:true,cerrada:tope>0&&!!cer["s|"+c.cat.id+"|"+s]});
       }
       /* después lo que se cargó con un nombre que no está en la lista */
       const cubiertos=new Set(subs.map(s=>norm(s)));
@@ -833,14 +851,24 @@ const calc={
       /* lo que falta y lo que sobra se cuentan subcategoría por subcategoría:
          pasarse en una no descuenta lo que falta pagar en otra */
       if(c.porSubs){
-        const faltanEn=filas.filter(x=>x.tope>x.monto*1.01||(x.tope>0&&x.monto===0)), pasadasEn=filas.filter(x=>x.tope>0&&x.monto>x.tope*1.01);
+        const faltanEn=filas.filter(x=>!x.cerrada&&(x.tope>x.monto*1.01||(x.tope>0&&x.monto===0))), pasadasEn=filas.filter(x=>x.tope>0&&x.monto>x.tope*1.01);
         c.faltan=faltanEn.reduce((s,x)=>s+(x.tope-x.monto),0);
         c.deMas=pasadasEn.reduce((s,x)=>s+(x.monto-x.tope),0);
         c.faltanEn=faltanEn.map(x=>x.nombre); c.deMasEn=pasadasEn.map(x=>x.nombre);
+        /* cerradas por debajo del tope: eso no se va a pagar, sobró */
+        const sobroEn=filas.filter(x=>x.cerrada&&x.monto<x.tope*0.99);
+        c.sobro=sobroEn.reduce((s,x)=>s+(x.tope-x.monto),0); c.sobroEn=sobroEn.map(x=>x.nombre);
+        /* tope efectivo: en las cerradas, lo que realmente pagaste si fue menos */
+        c.presupEf=filas.reduce((s,x)=>s+(x.cerrada?Math.min(x.tope,x.monto):x.tope),0);
+        const conTope=filas.filter(x=>x.tope>0);
+        c.todasCerradas=conTope.length>0&&conTope.every(x=>x.cerrada);
       }else{
-        c.faltan=c.presup>c.gastado*1.01?c.presup-c.gastado:0;
+        c.cerrada=c.presup>0&&!!cer["c|"+c.cat.id];
+        c.faltan=!c.cerrada&&c.presup>c.gastado*1.01?c.presup-c.gastado:0;
         c.deMas=c.presup>0&&c.gastado>c.presup*1.01?c.gastado-c.presup:0;
         c.faltanEn=[]; c.deMasEn=[];
+        c.sobro=c.cerrada&&c.gastado<c.presup*0.99?c.presup-c.gastado:0; c.sobroEn=[];
+        c.presupEf=c.cerrada?Math.min(c.presup,c.gastado):c.presup;
       }
       c.sinUsar=subs.filter(s=>!(gastadoPorSub[norm(s)]>0) && !(this.topeSub(m,c.cat.id,s)>0));
     }
@@ -1896,7 +1924,8 @@ const App={
     const sob=Math.max(calc.sobrante(key),0), deu=calc.deuda(key);
     const ing=mano?calc.ingresos(key):calc.ingresoMes(key);
     /* proyectado: cada categoría cuenta su tope, o lo gastado si ya lo pasó (y lo gastado sin tope) */
-    const topes=calc.presupuesto(key)+deu, gasProy=proy?calc.estimado(key):0, deMas=Math.max(gasProy-topes,0);
+    /* topes efectivos: en lo cerrado cuenta lo que pagaste, así "de más" es sólo exceso real */
+    const topes=calc.presupuestoEf(key)+deu, gasProy=proy?calc.estimado(key):0, deMas=Math.max(gasProy-topes,0);
     const gas=proy?gasProy:calc.gastado(key);
     const final=ing-gas-inv;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
@@ -2233,20 +2262,34 @@ const App={
     }
     const abierta=!!this.abiertas[c.cat.id], color=colorDe(c.cat.color);
     const p=c.presup>0?c.gastado/c.presup*100:null;
-    /* la barra sigue al total; las etiquetas cuentan las partes: lo que te pasaste
-       en unas subcategorías no descuenta lo que falta pagar en otras */
-    const est=estadoTope(c.gastado,c.presup);
+    /* la barra compara el total gastado con el tope total. Amarillo mientras quede algo por pagar;
+       después, rojo o verde según el total. Las etiquetas cuentan las partes, sin compensarse. */
+    const est=c.presup>0?(c.faltan>0.5?"warn":c.gastado>c.presup*1.01?"crit":"ok"):"none";
     const fill=colorEstado(est,color);
     const share=totalMes>0?c.gastado/totalMes*100:0;
     const donde=(n)=>!n||!n.length?"":n.length<=2?" en "+n.join(" y "):" en "+n.length+" subcategorías";
+    const tilde=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+    const cerradaTodo=c.cerrada||c.todasCerradas;
     let tag="";
     if(!(c.presup>0)) tag=`<span class="metertag tag-none">Sin tope</span>`;
     else{
       const pills=[];
-      if(c.deMas>0.5) pills.push(`<span class="metertag tag-crit">${money(c.deMas)} de más${esc(donde(c.deMasEn))}</span>`);
-      if(c.faltan>0.5) pills.push(`<span class="metertag tag-warn">faltan ${money(c.faltan)}${esc(donde(c.faltanEn))}</span>`);
+      /* cerrada entera: primero el balance de la categoría completa */
+      if(cerradaTodo){
+        const dif=c.gastado-c.presup;
+        pills.push(Math.abs(dif)<=c.presup*0.01
+          ?`<span class="metertag tag-ok">cerrada · justo en el tope</span>`
+          :`<span class="metertag tag-${dif>0?"crit":"ok"} total">cerrada · ${money(Math.abs(dif))} ${dif>0?"de más":"menos"} que el tope</span>`);
+      }
+      if(c.porSubs||!cerradaTodo){
+        if(c.deMas>0.5) pills.push(`<span class="metertag tag-crit">${money(c.deMas)} de más${esc(donde(c.deMasEn))}</span>`);
+        if(c.faltan>0.5) pills.push(`<span class="metertag tag-warn">faltan ${money(c.faltan)}${esc(donde(c.faltanEn))}</span>`);
+        if(c.sobro>0.5) pills.push(`<span class="metertag tag-ok">sobraron ${money(c.sobro)}${esc(donde(c.sobroEn))}</span>`);
+      }
       if(!pills.length) pills.push(`<span class="metertag tag-ok">completo</span>`);
-      tag=`<div class="tags"><span class="pctlbl num">${pct(c.gastado/c.presup*100)}</span>${pills.join("")}</div>`;
+      /* las categorías sin subcategorías se cierran desde acá; las otras, adentro, una por una */
+      const btn=!c.porSubs?`<button type="button" class="cerrar ${c.cerrada?"on":""}" data-cerrar="c|${esc(c.cat.id)}" aria-pressed="${!!c.cerrada}">${tilde}${c.cerrada?"Cerrada":"Cerrar el mes"}</button>`:"";
+      tag=`<div class="tags"><span class="pctlbl num">${pct(p)}</span>${pills.join("")}${btn}</div>`;
     }
 
     let subs="";
@@ -2256,12 +2299,18 @@ const App={
         const maxGasto=Math.max(...c.lista.map(s=>s.monto),1);
         cuerpo=c.lista.map((s,i)=>{
           if(s.tope>0){
-            const sp=s.monto/s.tope*100, sest=estadoTope(s.monto,s.tope), sfill=colorEstado(sest,color);
+            const sp=s.monto/s.tope*100;
+            /* cerrada y pagada por debajo del tope: completa, en verde */
+            const sest=s.cerrada&&s.monto<=s.tope*1.01?"ok":estadoTope(s.monto,s.tope), sfill=colorEstado(sest,color);
+            const texto=s.cerrada&&s.monto<=s.tope*1.01
+              ?(s.monto<s.tope*0.99?`Sobraron ${money(s.tope-s.monto)}`:"Completa")
+              :textoEstado(sest,s.monto,s.tope);
             return `<div class="subrow">
               <div class="top"><span>${esc(s.nombre)}</span>
                 <span class="num">${money(s.monto)}<em>de ${money(s.tope)}</em></span></div>
-              <div class="subbar"><i style="width:${Math.min(sp,100)}%;background:${sfill}"></i></div>
-              <div class="subtag ${sest}">${textoEstado(sest,s.monto,s.tope)}</div></div>`;
+              <div class="subbar"><i style="width:${s.cerrada&&s.monto<=s.tope*1.01?100:Math.min(sp,100)}%;background:${sfill}"></i></div>
+              <div class="subfoot"><div class="subtag ${sest}">${texto}</div>
+                <button type="button" class="cerrar ${s.cerrada?"on":""}" data-cerrar="s|${esc(c.cat.id)}|${esc(s.nombre)}" aria-pressed="${!!s.cerrada}">${tilde}${s.cerrada?"Cerrada":"Cerrar"}</button></div></div>`;
           }
           return `<div class="subrow">
             <div class="top"><span>${esc(s.nombre)}${s.definida?"":`<i class="libre" title="No está en la lista de subcategorías">libre</i>`}</span>
@@ -2272,8 +2321,10 @@ const App={
       }else{
         cuerpo=`<div class="hint">Sin gastos cargados en esta categoría.</div>`;
       }
-      if(c.porSubs)
-        cuerpo+=`<div class="sinusar">El tope de ${esc(c.cat.nombre)} (${money(c.presup)}) es la suma de estas subcategorías.</div>`;
+      if(c.porSubs){
+        cuerpo+=`<div class="sinusar">El tope de ${esc(c.cat.nombre)} (${money(c.presup)}) es la suma de estas subcategorías.${c.presupEf<c.presup-0.5?` Con lo cerrado, queda en ${money(c.presupEf)}.`:""}</div>`;
+        cuerpo+=`<button type="button" class="cerrar todas ${c.todasCerradas?"on":""}" data-cerrar-todas="${esc(c.cat.id)}">${tilde}${c.todasCerradas?"Reabrir toda la categoría":"Cerrar toda la categoría este mes"}</button>`;
+      }
       if(c.sinUsar&&c.sinUsar.length)
         cuerpo+=`<div class="sinusar">Sin tope ni gastos: ${c.sinUsar.map(esc).join(" · ")}</div>`;
       subs=`<div class="subs">${cuerpo}</div>`;
@@ -2890,6 +2941,22 @@ const App={
     const rp=$("#refrescarPrecios"); if(rp) rp.onclick=()=>this.refrescarPrecios(true);
     const ojo=$("#ojoPriv"); if(ojo) ojo.onclick=()=>{ this.priv=!this.priv; this.render(); };
     v.querySelectorAll("[data-coin]").forEach(b=>b.onclick=()=>{ const k="coin:"+b.dataset.coin; this.abiertas[k]=!this.abiertas[k]; this.render(); });
+
+    /* cerrar una categoría o subcategoría por este mes */
+    v.querySelectorAll("[data-cerrar]").forEach(b=>b.onclick=e=>{
+      e.stopPropagation();
+      const k=b.dataset.cerrar, m=store.ensureMes(this.mes); m.cerradas=m.cerradas||{};
+      const ahora=!m.cerradas[k]; if(ahora) m.cerradas[k]=true; else delete m.cerradas[k];
+      store.guardarMes(this.mes); this.toast(ahora?"Cerrada por este mes.":"Reabierta.");
+    });
+    v.querySelectorAll("[data-cerrar-todas]").forEach(b=>b.onclick=e=>{
+      e.stopPropagation();
+      const id=b.dataset.cerrarTodas, cat=store.cat(id), m=store.ensureMes(this.mes); m.cerradas=m.cerradas||{};
+      const conTope=(cat&&cat.subs||[]).filter(s=>calc.topeSub(m,id,s)>0);
+      const todas=conTope.length>0&&conTope.every(s=>m.cerradas["s|"+id+"|"+s]);
+      for(const s of conTope){ const k="s|"+id+"|"+s; if(todas) delete m.cerradas[k]; else m.cerradas[k]=true; }
+      store.guardarMes(this.mes); this.toast(todas?"Categoría reabierta.":"Categoría cerrada por este mes.");
+    });
     v.querySelectorAll("[data-per]").forEach(b=>b.onclick=()=>{ this.periodoCripto=b.dataset.per; this.render(); });
     v.querySelectorAll("[data-mon]").forEach(b=>b.onclick=()=>{ this.monedaCripto=b.dataset.mon; this.render(); });
     const selD=$("#selDolar"); if(selD) selD.onchange=()=>{ cartera.d.dolar=selD.value; cartera.precios.ts=0; store.guardarConfig(); this.refrescarPrecios(true); };
