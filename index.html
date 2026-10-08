@@ -392,6 +392,14 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .cbn small{font-size:11px;color:var(--ink-3)}
 .cbd{flex:none;text-align:right;font-weight:700;font-size:14px;white-space:nowrap}
 .cbd small{display:block;font-size:11px;font-weight:600;opacity:.85}
+.cbbtn{width:100%;text-align:left;border-radius:8px}
+.cbbtn:hover{background:var(--surface-2)}
+.cbbtn .chev{width:14px;height:14px;stroke:var(--ink-3);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;margin-left:4px;transition:transform .15s}
+.cbbtn.open .chev{transform:rotate(180deg)}
+.cbsubs{margin:0 0 6px 12px;padding-left:10px;border-left:2px solid var(--line-2)}
+.cbsub{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 2px}
+.cbsub .cbn b{font-size:13px;font-weight:500}
+.cbsub .cbd{font-size:13px}
 .cointotal span{flex:none;margin-right:10px}
 .cointotal b{text-align:right}
 .miniflow.tres .k{white-space:normal;line-height:1.25}
@@ -470,7 +478,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261008-104011 -->
+<!-- build 20261008-105229 -->
 
 <div id="shell">
   <header id="topbar">
@@ -522,7 +530,7 @@ function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALET
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261008-104011";
+const BUILD="20261008-105229";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -877,6 +885,13 @@ const calc={
         /* cerradas por debajo del tope: eso no se va a pagar, sobró */
         const sobroEn=filas.filter(x=>x.cerrada&&x.monto<x.tope*0.99);
         c.sobro=sobroEn.reduce((s,x)=>s+(x.tope-x.monto),0); c.sobroEn=sobroEn.map(x=>x.nombre);
+        /* estado de cada subcategoría con tope, para ver rápido qué falta pagar */
+        const conTopeE=filas.filter(x=>x.tope>0);
+        c.listasEn=conTopeE.filter(x=>x.cerrada||x.monto>=x.tope*0.99).map(x=>x.nombre);
+        const enCurso=conTopeE.filter(x=>!x.cerrada&&x.monto>0&&x.monto<x.tope*0.99);
+        c.quedan=enCurso.reduce((s,x)=>s+(x.tope-x.monto),0); c.quedanEn=enCurso.map(x=>x.nombre);
+        c.sinCargarEn=conTopeE.filter(x=>!x.cerrada&&x.monto<=0).map(x=>x.nombre);
+        c.detalleCierre=conTopeE.map(x=>({nombre:x.nombre,dif:x.monto-x.tope}));
         /* tope efectivo: en las cerradas, lo que realmente pagaste si fue menos */
         c.presupEf=filas.reduce((s,x)=>s+(x.cerrada?Math.min(x.tope,x.monto):x.tope),0);
         const conTope=filas.filter(x=>x.tope>0);
@@ -887,6 +902,8 @@ const calc={
         c.deMas=c.presup>0&&c.gastado>c.presup*1.01?c.gastado-c.presup:0;
         c.faltanEn=[]; c.deMasEn=[];
         c.sobro=c.cerrada&&c.gastado<c.presup*0.99?c.presup-c.gastado:0; c.sobroEn=[];
+        c.listasEn=[]; c.quedanEn=[]; c.sinCargarEn=[]; c.detalleCierre=[];
+        c.quedan=!c.cerrada&&c.gastado>0&&c.gastado<c.presup*0.99?c.presup-c.gastado:0;
         c.presupEf=c.cerrada?Math.min(c.presup,c.gastado):c.presup;
       }
       c.sinUsar=subs.filter(s=>!(gastadoPorSub[norm(s)]>0) && !(this.topeSub(m,c.cat.id,s)>0));
@@ -2218,10 +2235,66 @@ const App={
     return h;
   },
 
+  /* cambios de gastos: sólo categorías terminadas (cerradas, o todas si el mes ya pasó),
+     y al tocar una con subcategorías, en cuáles subió o bajó */
+  cambiosGastos(key){
+    const prev=keyMas(key,-1);
+    const mesN=MESES[Number(key.split("-")[1])-1], prevN=MESES[Number(prev.split("-")[1])-1];
+    const terminado=key<mesKey(new Date());
+    const cA=calc.porCategoria(prev), cB=calc.porCategoria(key);
+    const esFinal=c=>terminado||c.virtual||c.cerrada||c.todasCerradas;
+    const filas=[], abiertas=[]; let tot0=0, tot1=0;
+    const porNombre=l=>{ const o={}; (l||[]).forEach(x=>{ o[x.nombre]=(o[x.nombre]||0)+x.monto; }); return o; };
+    for(const id of new Set([...Object.keys(cA),...Object.keys(cB)])){
+      const a=cA[id], b=cB[id], v0=a?a.gastado:0, v1=b?b.gastado:0;
+      if(b&&!esFinal(b)){ if(v0>0||v1>0||b.presup>0) abiertas.push(b.cat.nombre); continue; }
+      if(v0<1&&v1<1) continue;
+      tot0+=v0; tot1+=v1;
+      const cat=(b||a).cat; let subs=[];
+      if(cat.subs&&cat.subs.length){
+        const m0=porNombre(a&&a.lista), m1=porNombre(b&&b.lista);
+        subs=Object.keys({...m0,...m1}).map(n=>({n,v0:m0[n]||0,v1:m1[n]||0,d:(m1[n]||0)-(m0[n]||0)}))
+          .filter(x=>Math.abs(x.d)>=1).sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+      }
+      if(Math.abs(v1-v0)>=1) filas.push({id,n:cat.nombre,v0,v1,d:v1-v0,subs});
+    }
+    filas.sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+    /* en gastos, subir es malo (rojo) y bajar es bueno (verde) */
+    const cls=d=>Math.abs(d)<1?"":d>0?"loss":"gain";
+    const flecha=d=>d>0?"▲":d<0?"▼":"=";
+    const pctDe=(d,base)=>base>0?" ("+pctSigno(d/base*100)+")":"";
+    const chev=`<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>`;
+    const fila=x=>{
+      const abierta=!!this.abiertas["cb:"+x.id], tiene=x.subs.length>0;
+      const cuerpo=`<span class="cbn"><b>${esc(x.n)}${tiene?chev:""}</b><small class="num">${money(x.v0)} → ${money(x.v1)}</small></span>
+        <span class="cbd num ${cls(x.d)}">${flecha(x.d)} ${money(Math.abs(x.d))}<small>${x.v0>0?pctDe(x.d,x.v0):" (nuevo)"}</small></span>`;
+      if(!tiene) return `<div class="cbrow">${cuerpo}</div>`;
+      return `<button type="button" class="cbrow cbbtn ${abierta?"open":""}" data-cbcat="${esc(x.id)}" aria-expanded="${abierta}">${cuerpo}</button>
+        ${abierta?`<div class="cbsubs">${x.subs.map(s=>`<div class="cbsub"><span class="cbn"><b>${esc(s.n)}</b><small class="num">${money(s.v0)} → ${money(s.v1)}</small></span>
+          <span class="cbd num ${cls(s.d)}">${flecha(s.d)} ${money(Math.abs(s.d))}<small>${s.v0>0?pctDe(s.d,s.v0):" (nuevo)"}</small></span></div>`).join("")}</div>`:""}`;
+    };
+    const dt=tot1-tot0, parcial=!terminado;
+    let h=`<section class="card"><div class="sechead"><h2 class="sec">Cambios</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>`;
+    if(parcial&&tot0<1&&tot1<1&&!filas.length){
+      return h+`<p class="hint">Todavía no cerraste ninguna categoría de ${mesN.toLowerCase()}. Los cambios de gastos aparecen cuando cerrás una categoría o cuando termina el mes.</p>
+        ${abiertas.length?`<p class="hint" style="margin-top:6px">Abiertas: ${abiertas.map(esc).join(" · ")}</p>`:""}</section>`;
+    }
+    h+=`<div class="cbtotal ${cls(dt)}"><span>${parcial?"Gastos de lo cerrado":"Gastos"}</span><b class="num">${flecha(dt)} ${money(Math.abs(dt))}${pctDe(dt,tot0)}</b></div>
+      <p class="hint" style="margin:4px 0 10px">${money(tot0)} en ${prevN.toLowerCase()} → ${money(tot1)} en ${mesN.toLowerCase()}.</p>`;
+    const mas=filas.filter(x=>x.d>0), menos=filas.filter(x=>x.d<0);
+    if(mas.length) h+=`<div class="eyebrow">Gastaste más en</div><div class="cblist">${mas.map(fila).join("")}</div>`;
+    if(menos.length) h+=`<div class="eyebrow" style="margin-top:10px">Gastaste menos en</div><div class="cblist">${menos.map(fila).join("")}</div>`;
+    if(!filas.length) h+=`<p class="hint">Sin cambios en lo que ya está cerrado.</p>`;
+    if(filas.some(x=>x.subs.length)) h+=`<p class="hint" style="margin-top:8px">Tocá una categoría para ver en qué subcategoría cambió.</p>`;
+    if(parcial&&abiertas.length) h+=`<p class="hint" style="margin-top:8px">Se comparan cuando las cierres o termine el mes: ${abiertas.map(esc).join(" · ")}</p>`;
+    return h+`</section>`;
+  },
+
   /* qué subió y qué bajó respecto del mes anterior, según lo elegido en Mes a mes */
   bloqueCambios(key,sel,ser){
     const prev=keyMas(key,-1);
     if(!store.mes(prev)||!store.mes(key)) return "";
+    if(sel==="gastos") return this.cambiosGastos(key);
     const mesN=MESES[Number(key.split("-")[1])-1], prevN=MESES[Number(prev.split("-")[1])-1];
     /* partes que componen cada total */
     const partes=k=>{
@@ -2341,26 +2414,35 @@ const App={
     const donde=(n)=>!n||!n.length?"":n.length<=2?" en "+n.join(" y "):" en "+n.length+" subcategorías";
     const tilde=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
     const cerradaTodo=c.cerrada||c.todasCerradas;
+    const lista=n=>n.length<=2?n.join(" y "):n.slice(0,-1).join(", ")+" y "+n[n.length-1];
     let tag="";
     if(!(c.presup>0)) tag=`<span class="metertag tag-none">Sin tope</span>`;
     else{
       const pills=[];
-      /* cerrada entera: primero el balance de la categoría completa */
       if(cerradaTodo){
+        /* cerrada entera: el balance de la categoría y después el de cada subcategoría */
         const dif=c.gastado-c.presup;
         pills.push(Math.abs(dif)<=c.presup*0.01
-          ?`<span class="metertag tag-ok">cerrada · justo en el tope</span>`
+          ?`<span class="metertag tag-ok total">cerrada · justo en el tope</span>`
           :`<span class="metertag tag-${dif>0?"crit":"ok"} total">cerrada · ${money(Math.abs(dif))} ${dif>0?"de más":"menos"} que el tope</span>`);
+        for(const d of (c.detalleCierre||[])){
+          if(Math.abs(d.dif)<1) continue;
+          pills.push(`<span class="metertag tag-${d.dif>0?"crit":"ok"}">${esc(d.nombre)} ${money(Math.abs(d.dif))} ${d.dif>0?"de más":"menos"}</span>`);
+        }
+      }else if(c.porSubs){
+        /* abierta: sólo qué está listo y qué falta pagar; el exceso ya se ve en la barra */
+        if(c.listasEn.length) pills.push(`<span class="metertag tag-ok">✓ ${esc(lista(c.listasEn))} ${c.listasEn.length===1?"lista":"listas"}</span>`);
+        if(c.sinCargarEn.length) pills.push(`<span class="metertag tag-warn">falta cargar ${esc(lista(c.sinCargarEn))}</span>`);
+        if(c.quedan>0.5) pills.push(`<span class="metertag tag-warn">faltan ${money(c.quedan)}${esc(donde(c.quedanEn))}</span>`);
+        if(!c.quedanEn.length&&!c.sinCargarEn.length) pills.push(`<span class="metertag tag-none">todo cargado · cerrala para ver el balance</span>`);
+      }else{
+        pills.push(c.gastado<=0?`<span class="metertag tag-warn">falta cargar</span>`
+          :c.quedan>0.5?`<span class="metertag tag-warn">faltan ${money(c.quedan)}</span>`
+          :`<span class="metertag tag-ok">✓ lista</span>`);
       }
-      if(c.porSubs||!cerradaTodo){
-        if(c.deMas>0.5) pills.push(`<span class="metertag tag-crit">${money(c.deMas)} de más${esc(donde(c.deMasEn))}</span>`);
-        if(c.faltan>0.5) pills.push(`<span class="metertag tag-warn">faltan ${money(c.faltan)}${esc(donde(c.faltanEn))}</span>`);
-        if(c.sobro>0.5) pills.push(`<span class="metertag tag-ok">sobraron ${money(c.sobro)}${esc(donde(c.sobroEn))}</span>`);
-      }
-      if(!pills.length) pills.push(`<span class="metertag tag-ok">completo</span>`);
       /* las categorías sin subcategorías se cierran desde acá; las otras, adentro, una por una */
       const btn=!c.porSubs?`<button type="button" class="cerrar ${c.cerrada?"on":""}" data-cerrar="c|${esc(c.cat.id)}" aria-pressed="${!!c.cerrada}">${tilde}${c.cerrada?"Cerrada":"Cerrar el mes"}</button>`:"";
-      tag=`<div class="tags"><span class="pctlbl num">${pct(p)}</span>${pills.join("")}${btn}</div>`;
+      tag=`<div class="tags">${pills.join("")}${btn}</div>`;
     }
 
     let subs="";
@@ -3057,6 +3139,7 @@ const App={
     const bf=$("#btnFuentes"); if(bf) bf.onclick=()=>this.gestionFuentes();
     v.querySelectorAll("[data-hs]").forEach(b=>b.onclick=()=>{this.serieHist=b.dataset.hs;this.render();});
     v.querySelectorAll("[data-subhist]").forEach(b=>b.onclick=()=>{this.subHist=b.dataset.subhist;this.render();});
+    v.querySelectorAll("[data-cbcat]").forEach(b=>b.onclick=()=>{ const k="cb:"+b.dataset.cbcat; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-bar]").forEach(b=>b.onclick=()=>this.mostrarBarra(b));
 
     const sw=$("#swArrastre"); if(sw) sw.onchange=()=>{store.config.arrastre=sw.checked;store.guardarConfig();};
