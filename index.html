@@ -482,7 +482,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261008-110334 -->
+<!-- build 20261008-110513 -->
 
 <div id="shell">
   <header id="topbar">
@@ -534,7 +534,7 @@ function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALET
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261008-110334";
+const BUILD="20261008-110513";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -2418,14 +2418,11 @@ const App={
       const pills=[];
       if(cerradaTodo){
         /* cerrada entera: el balance de la categoría y después el de cada subcategoría */
+        /* cerrada: sólo el balance contra el tope; el detalle se ve al desplegarla */
         const dif=c.gastado-c.presup;
         pills.push(Math.abs(dif)<=c.presup*0.01
           ?`<span class="metertag tag-ok total">cerrada · justo en el tope</span>`
-          :`<span class="metertag tag-${dif>0?"crit":"ok"} total">cerrada · ${money(Math.abs(dif))} ${dif>0?"de más":"menos"} que el tope</span>`);
-        for(const d of (c.detalleCierre||[])){
-          if(Math.abs(d.dif)<1) continue;
-          pills.push(`<span class="metertag tag-${d.dif>0?"crit":"ok"}">${esc(d.nombre)} ${money(Math.abs(d.dif))} ${d.dif>0?"de más":"menos"}</span>`);
-        }
+          :`<span class="metertag tag-${dif>0?"crit":"ok"} total">cerrada · ${money(Math.abs(dif))} ${dif>0?"de más":"menos"} (${pctSigno(dif/c.presup*100)})</span>`);
       }else if(c.porSubs){
         /* abierta: sólo qué está listo y qué falta pagar; el exceso ya se ve en la barra */
         if(c.listasEn.length) pills.push(`<span class="metertag tag-ok">✓ ${esc(lista(c.listasEn))} ${c.listasEn.length===1?"lista":"listas"}</span>`);
