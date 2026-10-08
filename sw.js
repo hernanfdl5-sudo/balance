@@ -1,7 +1,7 @@
 /* Balance Personal — service worker
    Guarda la app en el teléfono para que abra sin internet.
    VERSION la reemplaza el script de armado en cada publicación. */
-const VERSION = "bp-20261007-123009";
+const VERSION = "bp-20261008-103304";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable.png"];
 
 self.addEventListener("install", e => {
@@ -24,7 +24,8 @@ self.addEventListener("fetch", e => {
   /* la página: primero red (para recibir mejoras), si no hay señal la copia guardada */
   if (req.mode === "navigate" || url.pathname.endsWith("/index.html")) {
     e.respondWith(
-      fetch(req).then(r => {
+      /* no-store: siempre la versión publicada, sin pasar por la caché del navegador */
+      fetch(req, { cache: "no-store" }).then(r => {
         const copia = r.clone();
         caches.open(VERSION).then(c => c.put("./index.html", copia));
         return r;
