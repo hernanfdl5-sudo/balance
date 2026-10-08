@@ -458,7 +458,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261007-123009 -->
+<!-- build 20261008-103304 -->
 
 <div id="shell">
   <header id="topbar">
@@ -508,6 +508,13 @@ function hoyISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMont
 function fechaCorta(iso){if(!iso)return"";const p=String(iso).split("-");return p.length<3?"":(Number(p[2])+" "+MESES_CORTO[Number(p[1])-1]);}
 function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALETA.length]+")";}
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
+
+/* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
+const BUILD="20261008-103304";
+function versionApp(){
+  const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
+  return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
+}
 
 /* estado de una barra frente a su tope — el mismo criterio en toda la app:
    amarillo = todavía falta, verde = completo, rojo = pasado */
@@ -2882,7 +2889,8 @@ const App={
         <button class="btn out sm" id="exportar">Descargar respaldo</button>
         <button class="btn out sm" id="copiar">Copiar al portapapeles</button>
         <button class="btn out sm" id="importar">Restaurar desde un respaldo</button>
-      </div></details>`;
+      </div></details>
+    <p class="hint" style="text-align:center;margin-top:4px">Versión ${esc(versionApp())}</p>`;
   },
 
   /* --------------------------------------------------------- interacciones */
