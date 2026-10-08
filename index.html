@@ -380,6 +380,18 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .hist .hr span:first-child{font-weight:600;text-transform:capitalize}
 .hist .hr small{color:var(--ink-3);font-weight:500}
 .hist .hr.now{background:var(--surface-2);border-radius:8px}
+/* cambios vs el mes anterior */
+.cbtotal{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:15px;font-weight:600}
+.cbtotal b{font-size:18px;font-weight:700;white-space:nowrap}
+.cbtotal.gain b{color:var(--good-ink)} .cbtotal.loss b{color:var(--crit-ink)}
+.cblist{display:flex;flex-direction:column;margin-top:4px}
+.cbrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line)}
+.cbrow:last-child{border-bottom:none}
+.cbn{display:flex;flex-direction:column;min-width:0}
+.cbn b{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cbn small{font-size:11px;color:var(--ink-3)}
+.cbd{flex:none;text-align:right;font-weight:700;font-size:14px;white-space:nowrap}
+.cbd small{display:block;font-size:11px;font-weight:600;opacity:.85}
 .cointotal span{flex:none;margin-right:10px}
 .cointotal b{text-align:right}
 .miniflow.tres .k{white-space:normal;line-height:1.25}
@@ -458,7 +470,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261008-103304 -->
+<!-- build 20261008-104011 -->
 
 <div id="shell">
   <header id="topbar">
@@ -510,7 +522,7 @@ function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALET
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261008-103304";
+const BUILD="20261008-104011";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -2202,7 +2214,59 @@ const App={
             <span class="num" style="color:var(--warn-ink)">${moneyShort(a)}</span><span class="num ${r>=0?"gain":"loss"}">${(r<0?"−":"")+moneyShort(Math.abs(r))}</span></div>`; }).join("")
         + `</div><p class="hint" style="margin:10px 0 0">Montos abreviados (k = mil, M = millón).</p></section>`;
     }
+    h+=this.bloqueCambios(key,sel,SER[sel]);
     return h;
+  },
+
+  /* qué subió y qué bajó respecto del mes anterior, según lo elegido en Mes a mes */
+  bloqueCambios(key,sel,ser){
+    const prev=keyMas(key,-1);
+    if(!store.mes(prev)||!store.mes(key)) return "";
+    const mesN=MESES[Number(key.split("-")[1])-1], prevN=MESES[Number(prev.split("-")[1])-1];
+    /* partes que componen cada total */
+    const partes=k=>{
+      const out={}, m=store.mes(k)||MES_DEF();
+      if(sel==="gastos") for(const c of Object.values(calc.porCategoria(k))){ if(c.gastado>0) out[c.cat.nombre]=(out[c.cat.nombre]||0)+c.gastado; }
+      else if(sel==="ingresos") for(const f of calc.porFuente(k)){ const v=f.virtual?f.monto:(f.esperado>0?f.esperado:f.monto); if(v>0) out[f.nombre]=(out[f.nombre]||0)+v; }
+      else if(sel==="ahorro") for(const i of m.inversiones){ const n=(i.instrumento||"Otro").trim(); out[n]=(out[n]||0)+(Number(i.monto)||0); }
+      else { out.Ingresos=calc.ingresoMes(k); out.Gastos=calc.gastado(k); out.Ahorro=calc.invertido(k); }
+      return out;
+    };
+    const a=partes(prev), b=partes(key);
+    const tot0=ser.fn(prev), tot1=ser.fn(key), dt=tot1-tot0;
+    /* en gastos subir es malo; en ingresos, ahorro y sobrante subir es bueno */
+    const subirEsBueno=sel!=="gastos";
+    const clase=d=>Math.abs(d)<1?"":((d>0)===subirEsBueno?"gain":"loss");
+    const flecha=d=>d>0?"▲":d<0?"▼":"=";
+    const pctDe=(d,base)=>base>0?" ("+pctSigno(d/base*100)+")":"";
+
+    let filas=Object.keys({...a,...b}).map(n=>{
+      const v0=a[n]||0, v1=b[n]||0;
+      /* en Sobrante, gastos y ahorro restan: se muestra su efecto sobre lo que sobra */
+      const efecto=sel==="sobrante"&&n!=="Ingresos"?-(v1-v0):(v1-v0);
+      return {n,v0,v1,d:v1-v0,efecto};
+    }).filter(x=>Math.abs(x.d)>=1).sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+
+    const fila=x=>{
+      const c=sel==="sobrante"?(x.efecto>0?"gain":"loss"):clase(x.d);
+      return `<div class="cbrow"><span class="cbn"><b>${esc(x.n)}</b><small class="num">${money(x.v0)} → ${money(x.v1)}</small></span>
+        <span class="cbd num ${c}">${flecha(x.d)} ${money(Math.abs(x.d))}<small>${x.v0>0?pctDe(x.d,x.v0):x.v1>0?" (nuevo)":""}</small></span></div>`;
+    };
+    const subieron=filas.filter(x=>x.d>0), bajaron=filas.filter(x=>x.d<0);
+    const nombre={gastos:"Gastos",ingresos:"Ingresos",ahorro:"Ahorro",sobrante:"Sobrante"}[sel];
+    const enCurso=key===mesKey(new Date());
+
+    let h=`<section class="card"><div class="sechead"><h2 class="sec">Cambios</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>
+      <div class="cbtotal ${clase(dt)}"><span>${nombre}</span><b class="num">${flecha(dt)} ${money(Math.abs(dt))}${pctDe(dt,Math.abs(tot0))}</b></div>
+      <p class="hint" style="margin:4px 0 10px">${money(tot0)} en ${prevN.toLowerCase()} → ${money(tot1)} en ${mesN.toLowerCase()}${enCurso?" (este mes todavía está en curso)":""}.</p>`;
+    if(!filas.length) return h+`<p class="hint">Sin cambios entre un mes y el otro.</p></section>`;
+    if(sel==="sobrante"){
+      h+=`<div class="eyebrow">Por qué cambió</div><div class="cblist">${filas.map(fila).join("")}</div>`;
+    }else{
+      if(subieron.length) h+=`<div class="eyebrow">${sel==="gastos"?"Gastaste más en":"Subieron"}</div><div class="cblist">${subieron.map(fila).join("")}</div>`;
+      if(bajaron.length) h+=`<div class="eyebrow" style="margin-top:10px">${sel==="gastos"?"Gastaste menos en":"Bajaron"}</div><div class="cblist">${bajaron.map(fila).join("")}</div>`;
+    }
+    return h+`</section>`;
   },
 
   /* dos tortas con los mismos colores: cómo pensabas repartir la plata y cómo la repartiste */
