@@ -365,7 +365,8 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .salio{display:flex;align-items:flex-start;gap:8px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
 .salio>div,.sgrupo>div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .salio>div:last-child{flex:1}
-.sgrupo{flex:2;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
+/* proyectado y gastado van lado a lado (la regla de arriba no debe convertirlo en columna) */
+.salio>.sgrupo{flex:2;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
 .sgrupo .metertag{grid-column:1/-1;justify-self:start;width:fit-content;max-width:100%;margin-top:2px}
 .salio .k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .salio .v{font-size:15px;font-weight:600;white-space:nowrap}
@@ -421,6 +422,11 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .cbgrupo b{font-weight:700;white-space:nowrap}
 .cbgrupo.loss{background:var(--crit-soft);color:var(--crit-ink)}
 .cbgrupo.gain{background:var(--good-soft);color:var(--good-ink)}
+.cbgrupo{width:100%;text-align:left}
+.cbgrupo span small{font-size:11px;font-weight:600;opacity:.75;margin-left:6px}
+.cbgrupo .chev{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;margin-left:6px;transition:transform .15s}
+.cbgrupo.open .chev{transform:rotate(180deg)}
+.cbgrupo+.cblist{margin:4px 2px 0}
 .cointotal span{flex:none;margin-right:10px}
 .cointotal b{text-align:right}
 .miniflow.tres .k{white-space:normal;line-height:1.25}
@@ -499,7 +505,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261009-193002 -->
+<!-- build 20261009-194303 -->
 
 <div id="shell">
   <header id="topbar">
@@ -569,7 +575,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261009-193002";
+const BUILD="20261009-194303";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -1590,7 +1596,8 @@ const App={
     const pend=calc.alertas(this.mes).sinCargar.filter(f=>f.vence-hoy<=5);
     if(!pend.length) return "";
     const nombres=pend.map(f=>f.nombre||f.cat.nombre);
-    const txt=nombres.length===1?nombres[0]:nombres.slice(0,-1).join(", ")+" y "+nombres[nombres.length-1];
+    /* uno: "• Gas"; varios: "Edesur - Gas - TCG" */
+    const txt=nombres.length===1?"• "+nombres[0]:nombres.join(" - ");
     const vencido=pend.some(f=>f.vence<hoy);
     return `<div class="vence ${vencido?"crit":""}" role="status">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>
@@ -2049,19 +2056,22 @@ const App={
       <div class="big num">${money(Math.abs(final))}</div>
       ${modo==="real"&&!sinSueldo?(()=>{ const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=Math.max(ingEsp-calc.ingresosReales(key),0);
         return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>`; })():""}
-      <div class="sub">${proy
+      ${mano&&!notaSob?"":`<div class="sub">${proy
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes, lo que ya te pasaste y lo ahorrado${sob>0?", con el sobrante anterior":""}`)
-        : mano ? `Lo que retiraste menos gastos y ahorro${notaSob}`
-        : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>
+        : mano ? `Incluye${notaSob.replace(" · incluye","")}`
+        : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>`}
       ${!mano&&sinSueldo?`<div class="banner" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
         <span>Falta cargar cuánto es tu sueldo de ${mesN}. Mientras tanto uso lo que retiraste.</span>
         <button type="button" class="btn sm" data-iresp="1" style="flex:none;background:var(--warn);color:#2a1d00">Cargar</button></div>`:""}
-      <div class="miniflow">
-        <div><span class="k">${mano?"Retiraste":sinSueldo?"Cobraste":"Sueldo del mes"}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
+      ${mano?`<div class="miniflow dos">
+        <div><span class="k">Retiraste</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
+        <div><span class="k">Gastos + ahorro</span><span class="v num" style="color:var(--crit-ink)">${gas+inv>0?"−":""}${money(gas+inv)}</span></div>
+      </div>`:`<div class="miniflow">
+        <div><span class="k">${sinSueldo?"Cobraste":"Sueldo del mes"}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
         <div><span class="k">${proy?"Gastos proyectados":"Gastos"}</span><span class="v num" style="color:var(--crit-ink)">${gas>0?"−":""}${money(gas)}</span>
           ${proy&&Math.abs(difProy)>0.5?`<span class="s num" style="color:var(${difProy>0?"--crit-ink":"--good-ink"})">topes ${money(topes)} ${difProy>0?"+":"−"} ${money(Math.abs(difProy))} ${difProy>0?"de más":"de menos"}</span>`:""}</div>
         <div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${inv>0?"−":""}${money(inv)}</span></div>
-      </div></section>
+      </div>`}</section>
 
       <div class="segs" role="tablist">
         <button role="tab" data-sub="egresos" aria-selected="${this.sub!=="ingresos"}">Egresos</button>
@@ -2357,8 +2367,14 @@ const App={
     const mas=filas.filter(x=>x.d>0), menos=filas.filter(x=>x.d<0);
     const suma=l=>l.reduce((s,x)=>s+Math.abs(x.d),0);
     let h=`<section class="card"><div class="sechead"><h2 class="sec">Cambios</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>`;
-    if(mas.length) h+=`<div class="cbgrupo loss"><span>Exceso de gasto</span><b class="num">▲ ${money(suma(mas))}</b></div><div class="cblist">${mas.map(fila).join("")}</div>`;
-    if(menos.length) h+=`<div class="cbgrupo gain" ${mas.length?'style="margin-top:14px"':""}><span>Gastaste menos</span><b class="num">▼ ${money(suma(menos))}</b></div><div class="cblist">${menos.map(fila).join("")}</div>`;
+    /* cada grupo se despliega al tocarlo; al abrir la app arrancan cerrados */
+    const chev=`<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>`;
+    const grupo=(k,cls,titulo,fl,l,sep)=>{ const ab=!!this.abiertas["cbg:"+k];
+      return `<button type="button" class="cbgrupo ${cls} ${ab?"open":""}" data-cbgrupo="${k}" aria-expanded="${ab}" ${sep?'style="margin-top:14px"':""}>
+        <span>${titulo}<small>${l.length}</small></span><b class="num">${fl} ${money(suma(l))}${chev}</b></button>
+        ${ab?`<div class="cblist">${l.map(fila).join("")}</div>`:""}`; };
+    if(mas.length) h+=grupo("mas","loss","Exceso de gasto","▲",mas,false);
+    if(menos.length) h+=grupo("menos","gain","Gastaste menos","▼",menos,mas.length>0);
     return h+`</section>`;
   },
 
@@ -3078,16 +3094,6 @@ const App={
           <button class="btn pri sm" id="activarLock">Activar bloqueo</button>`}
       </div></details>
 
-    ${(()=>{ const a=calc.alertas(this.mes), mesN=MESES[Number(this.mes.split("-")[1])-1];
-      const fila=(f,der,est)=>`<div class="alrow"><i class="dot" style="background:${f.ing?"var(--good)":colorDe(f.cat.color)}"></i>
-        <span class="g"><b>${esc(f.nombre||f.cat.nombre)}</b>${f.nombre?`<small>${esc(f.cat.nombre)}</small>`:""}</span><span class="num r ${est}">${der}</span></div>`;
-      const vacio=t=>`<p class="hint">${t}</p>`;
-      const disponible=a.conSaldo.filter(f=>!f.ing).reduce((s,f)=>s+(f.tope-f.gastado),0);
-      return `
-    <details class="set"><summary>Saldo disponible <span class="eyebrow num">${money(disponible)}</span></summary>
-      <div class="body"><p class="hint">Lo que todavía podés gastar en cada una sin pasarte del tope.</p>
-        ${a.conSaldo.length?`<div class="allist">${a.conSaldo.map(f=>fila(f,(f.ing?"faltan ":"quedan ")+money(f.tope-f.gastado),"ok")).join("")}</div>`:vacio("Sin saldo pendiente en ninguna.")}</div></details>`; })()}
-
     <details class="set"><summary>Palabras que aprendió <span class="eyebrow">${propios.length}</span></summary>
       <div class="body">
         <p class="hint">El dictado entiende <code>50 lucas</code>, <code>50k</code>, <code>medio palo</code>, <code>2 palos</code>
@@ -3205,6 +3211,7 @@ const App={
     v.querySelectorAll("[data-fmov]").forEach(b=>b.onclick=()=>{this.filtroMov=b.dataset.fmov;this.render();});
     v.querySelectorAll("[data-vegr]").forEach(b=>b.onclick=()=>{this.vistaEgr=b.dataset.vegr;this.render();});
     v.querySelectorAll("[data-fcat]").forEach(b=>b.onclick=()=>{this.filtroCat=b.dataset.fcat;this.render();});
+    v.querySelectorAll("[data-cbgrupo]").forEach(b=>b.onclick=()=>{ const k="cbg:"+b.dataset.cbgrupo; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>this.formPresupuestos("gastos"));
     v.querySelectorAll("[data-iresp]").forEach(b=>b.onclick=()=>this.formPresupuestos("ingresos"));
     const bc=$("#btnCats"); if(bc) bc.onclick=()=>this.gestionCategorias();
