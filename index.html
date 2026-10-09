@@ -183,6 +183,14 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .tag-crit{background:var(--crit-soft);color:var(--crit-ink)}
 .tag-none{background:var(--surface-3);color:var(--ink-3)}
 .tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px}
+/* recordatorio de vencimientos */
+.vence{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border-radius:14px;
+  background:var(--warn-soft);color:var(--warn-ink);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.vence svg{width:24px;height:24px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.vence span{display:flex;flex-direction:column;min-width:0}
+.vence b{font-weight:700;font-size:14px}
+.vence small{font-size:12.5px;font-weight:500;opacity:.9}
+.vence.crit{background:var(--crit-soft);color:var(--crit-ink);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
 .cathead .catname>span{min-width:0}
 .catnums .a.loss,.catnums .b.loss{color:var(--crit-ink)}
 /* botón para dar por cerrada una categoría o subcategoría en el mes */
@@ -484,7 +492,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261009-085855 -->
+<!-- build 20261009-090748 -->
 
 <div id="shell">
   <header id="topbar">
@@ -536,7 +544,7 @@ function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALET
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261009-085855";
+const BUILD="20261009-090748";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -555,13 +563,13 @@ function textoEstado(est,gastado,tope,vFalta){
 /* ============================ datos por defecto ============================ */
 
 const CATS_DEF=[
-  {id:"departamento",nombre:"Departamento",color:0,subs:["Alquiler","Expensas","TCG"]},
+  {id:"departamento",nombre:"Departamento",color:0,subs:["Alquiler","Expensas","TCG"],vence:10},
   {id:"comida",      nombre:"Comida",      color:1,subs:["Verdura","Carne","Súper","Pescado"]},
   {id:"deporte",     nombre:"Deporte",     color:2,subs:["Gimnasio","Boxeo","Fútbol","Natación","Pádel"]},
-  {id:"servicios",   nombre:"Servicios",   color:3,subs:["Edesur","Gas"]},
+  {id:"servicios",   nombre:"Servicios",   color:3,subs:["Edesur","Gas"],vence:10},
   {id:"salidas",     nombre:"Salidas",     color:4,subs:[]},
-  {id:"auto",        nombre:"Auto",        color:5,subs:["Patente","Cuota","Seguro"]},
-  {id:"tarjetas",    nombre:"Tarjetas",    color:6,subs:["Mercado Libre","Mastercard","Visa"]},
+  {id:"auto",        nombre:"Auto",        color:5,subs:["Patente","Cuota","Seguro"],vence:10},
+  {id:"tarjetas",    nombre:"Tarjetas",    color:6,subs:["Mercado Libre","Mastercard","Visa"],vence:10},
   {id:"otros",       nombre:"Otros",       color:7,subs:[]}
 ];
 
@@ -665,7 +673,11 @@ const store={
 
   /* compatibilidad con datos guardados por versiones anteriores */
   migrar(c){
-    c.cats=(c.cats||[]).map(x=>({...x,subs:Array.isArray(x.subs)?x.subs:[]}));
+    /* pagos con vencimiento: por defecto el día 10 en las categorías de pagos fijos
+       (sólo si nunca se configuró; null = sin aviso, elegido por el usuario) */
+    const VENCE_DEF={departamento:10,servicios:10,auto:10,tarjetas:10};
+    c.cats=(c.cats||[]).map(x=>({...x,subs:Array.isArray(x.subs)?x.subs:[],
+      vence:x.vence===undefined?(VENCE_DEF[x.id]||null):x.vence}));
     if(!c.cats.length) c.cats=CATS_DEF.map(x=>({...x,subs:[...x.subs]}));
     if(!Array.isArray(c.fuentes)||!c.fuentes.length) c.fuentes=[...FUENTES_DEF];
     if(!Array.isArray(c.instrumentos)||!c.instrumentos.length) c.instrumentos=[...INSTR_DEF];
@@ -804,7 +816,8 @@ const calc={
         const e=estadoTope(f.gastado,f.tope);
         /* una cerrada sólo avisa si se pasó del tope */
         if(f.cerrada&&e!=="crit") continue;
-        if(f.gastado<=0) sinCargar.push(f);
+        /* "sin cargar" es sólo para pagos con vencimiento; el resto, sin gastos, es saldo disponible */
+        if(f.gastado<=0){ if(c.vence) sinCargar.push({...f,vence:c.vence}); else conSaldo.push(f); }
         else if(e==="warn") conSaldo.push(f);
         else if(e==="crit") pasados.push(f);
         /* "completo" (dentro del 1 %) no es una alerta */
@@ -814,8 +827,9 @@ const calc={
     for(const f of this.porFuente(key)){
       if(!(f.esperado>0)) continue;
       const fila={cat:{nombre:"Ingreso",color:0},ing:true,nombre:f.nombre,tope:f.esperado,gastado:f.monto};
-      if(f.monto<=0) sinCargar.push(fila); else if(f.monto<f.esperado*0.99) conSaldo.push(fila);
+      if(f.monto<f.esperado*0.99) conSaldo.push(fila);
     }
+    sinCargar.sort((a,b)=>(a.vence-b.vence)||String(a.nombre||a.cat.nombre).localeCompare(String(b.nombre||b.cat.nombre)));
     conSaldo.sort((a,b)=>(b.tope-b.gastado)-(a.tope-a.gastado));
     pasados.sort((a,b)=>(b.gastado-b.tope)-(a.gastado-a.tope));
     return {sinCargar,conSaldo,pasados};
@@ -1533,6 +1547,25 @@ const App={
   ultimoRespaldo(){ try{ return Number(localStorage.getItem("bp_respaldo")||0); }catch(e){ return 0; } },
   marcarRespaldo(){ try{ localStorage.setItem("bp_respaldo",String(Date.now())); }catch(e){} this.render(); },
   hayDatos(){ return Object.values(store.meses).some(m=>m.gastos.length||m.ingresos.length||m.inversiones.length); },
+  /* recordatorio de pagos con vencimiento sin cargar: desde 5 días antes, y en rojo si ya venció.
+     Sólo en el mes en curso (de los meses pasados no tiene sentido avisar). */
+  bannerVencimientos(){
+    if(!store.listos||this.mes!==mesKey(new Date())) return "";
+    const hoy=new Date().getDate(), pend=calc.alertas(this.mes).sinCargar;
+    const porDia={};
+    for(const f of pend){ if(f.vence-hoy<=5) (porDia[f.vence]=porDia[f.vence]||[]).push(f.nombre||f.cat.nombre); }
+    const dias=Object.keys(porDia).map(Number).sort((a,b)=>a-b);
+    if(!dias.length) return "";
+    return dias.map(d=>{
+      const falta=d-hoy, vencido=falta<0;
+      const cuando=vencido?`Venció el ${d}`:falta===0?"Vence hoy":falta===1?"Vence mañana":`Vence el ${d} · faltan ${falta} días`;
+      const nombres=porDia[d], txt=nombres.length<=3?nombres.join(", "):nombres.slice(0,3).join(", ")+` y ${nombres.length-3} más`;
+      return `<button type="button" class="vence ${vencido?"crit":""}" data-irvence="1">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>
+        <span><b>${cuando}</b><small>Falta cargar: ${esc(txt)}</small></span></button>`;
+    }).join("");
+  },
+
   bannerRespaldo(){
     if(!this.modoPropio||!this.hayDatos()) return "";
     const dias=(Date.now()-this.ultimoRespaldo())/86400000;
@@ -1862,7 +1895,7 @@ const App={
   /* ---------------------------------------------------------------- CARGAR */
   vistaCargar(){
     const b=this.borradores;
-    let h=this.bannerRespaldo();
+    let h=this.bannerVencimientos()+this.bannerRespaldo();
     if(this.ultimoTexto) h+=`<div class="heard">“${esc(this.ultimoTexto)}”</div>`;
     if(!b.length&&!this.ultimoTexto)
       h+=`<div class="empty" style="padding-top:34px"><b>Dictá o escribí un gasto abajo</b>Por ejemplo: “50 lucas de carne, 20 de súper”.</div>`;
@@ -1975,7 +2008,7 @@ const App={
     const sinTopes=calc.presupuesto(key)===0, sinSueldo=ingEsp===0;
     const notaSob=deu>0?` · incluye ${money(deu)} de deuda del mes anterior`:sob>0?` · incluye ${money(sob)} que sobraron el mes anterior`:"";
 
-    let h=`<section class="hero" style="--hero-accent:${acc}">
+    let h=this.bannerVencimientos()+`<section class="hero" style="--hero-accent:${acc}">
       <div class="segs mini" role="tablist" style="margin-bottom:14px">
         <button role="tab" data-hero="real" aria-selected="${modo==="real"}">Real</button>
         <button role="tab" data-hero="mano" aria-selected="${mano}">En mano</button>
@@ -3007,8 +3040,9 @@ const App={
       const disponible=a.conSaldo.filter(f=>!f.ing).reduce((s,f)=>s+(f.tope-f.gastado),0);
       return `
     <details class="set" id="setAlertas"><summary>Sin cargar <span class="eyebrow">${a.sinCargar.length}</span></summary>
-      <div class="body"><p class="hint">Tienen tope o esperado en ${mesN} pero nada cargado. Si ya pasó, cargalo.</p>
-        ${a.sinCargar.length?`<div class="allist">${a.sinCargar.map(f=>fila(f,(f.ing?"esperado ":"tope ")+money(f.tope),"none")).join("")}</div>`:vacio("Todo lo que tiene tope ya tiene algo cargado.")}</div></details>
+      <div class="body"><p class="hint">Pagos con vencimiento de ${mesN} que todavía no cargaste.</p>
+        ${a.sinCargar.length?`<div class="allist">${a.sinCargar.map(f=>fila(f,"vence el "+f.vence,new Date().getDate()>f.vence&&this.mes===mesKey(new Date())?"crit":"none")).join("")}</div>`:vacio("Todos los pagos con vencimiento están cargados.")}
+        <p class="hint">El día de vencimiento se cambia en cada categoría (Resumen › Tus categorías).</p></div></details>
 
     <details class="set"><summary>Exceso <span class="eyebrow">${a.pasados.length}</span></summary>
       <div class="body"><p class="hint">Subcategorías que ya pasaron su tope este mes.</p>
@@ -3141,6 +3175,10 @@ const App={
     const bf=$("#btnFuentes"); if(bf) bf.onclick=()=>this.gestionFuentes();
     v.querySelectorAll("[data-hs]").forEach(b=>b.onclick=()=>{this.serieHist=b.dataset.hs;this.render();});
     v.querySelectorAll("[data-subhist]").forEach(b=>b.onclick=()=>{this.subHist=b.dataset.subhist;this.render();});
+    v.querySelectorAll("[data-irvence]").forEach(b=>b.onclick=()=>{
+      this.tab="ajustes"; this.pintarTabs(); this.render();
+      const d=$("#setAlertas"); if(d){ d.open=true; d.scrollIntoView({behavior:"smooth",block:"start"}); }
+    });
     v.querySelectorAll("[data-cbcat]").forEach(b=>b.onclick=()=>{ const k="cb:"+b.dataset.cbcat; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-bar]").forEach(b=>b.onclick=()=>this.mostrarBarra(b));
 
@@ -3528,6 +3566,9 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
       <label class="f" for="fNom">Nombre<input type="text" id="fNom" value="${esc(cat?cat.nombre:"")}" placeholder="Mascotas"></label>
       <div class="f">Color<div class="swatches" id="sw">${PALETA.map((_,i)=>
         `<button type="button" data-c="${i}" aria-pressed="${i===color}" style="background:${colorDe(i)}" aria-label="Color ${i+1}"></button>`).join("")}</div></div>
+      <label class="f" for="fVence">Vence el día (opcional)
+        <input type="number" id="fVence" min="1" max="31" inputmode="numeric" value="${cat&&cat.vence?cat.vence:""}" placeholder="Sin vencimiento">
+        <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">Para pagos fijos (alquiler, servicios, tarjetas): te avisa si no lo cargaste antes de ese día.</span></label>
       <div class="f">Subcategorías (opcional)
         <div class="kvlist" id="subList">${pintarSubs()}</div>
         <div class="subedit" style="margin-top:6px">
@@ -3540,8 +3581,9 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
       const nom=$("#fNom",b).value.trim();
       if(!nom){ this.toast("Ponele un nombre."); return false; }
       const c=Number(b.querySelector("[data-c][aria-pressed=true]").dataset.c);
+      const vRaw=Number($("#fVence",b).value), vence=vRaw>=1&&vRaw<=31?Math.round(vRaw):null;
       if(cat){
-        cat.nombre=nom; cat.color=c; cat.subs=subs;
+        cat.nombre=nom; cat.color=c; cat.subs=subs; cat.vence=vence;
         if(renombres.length) for(const k in store.meses){
           const mm=store.meses[k]; let toco=false;
           for(const [viejo,nuevo] of renombres){
@@ -3555,7 +3597,7 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
       else{
         let nid=norm(nom).replace(/\s/g,"-")||("cat"+uid());
         while(store.config.cats.some(x=>x.id===nid)) nid+="-2";
-        store.config.cats.push({id:nid,nombre:nom,color:c,subs});
+        store.config.cats.push({id:nid,nombre:nom,color:c,subs,vence});
       }
       store.guardarConfig();
       this.toast(cat?"Categoría actualizada.":"Categoría creada.");
