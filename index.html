@@ -93,6 +93,9 @@ button{cursor:pointer;border:none;background:none}
   background:var(--surface);border:1px solid var(--line);color:var(--ink-2);font-size:17px;line-height:1;flex:none}
 .mesnav:hover{background:var(--surface-3);border-color:var(--line-2)}
 .mestitle{flex:1;min-width:0;text-align:center}
+.mesnav.perfil{margin-left:6px;color:var(--ink-3)}
+.mesnav.perfil svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mesnav.perfil.on{background:var(--brand-soft);color:var(--brand-ink);border-color:transparent}
 .mestitle .m{font-family:"Instrument Serif",Georgia,serif;font-size:25px;line-height:1.05;letter-spacing:.2px;
   display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mestitle .y{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-top:1px}
@@ -300,9 +303,9 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);
   padding:7px 8px calc(7px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:2px}
 #tabs .t{flex:1;max-width:110px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 1px;
-  border-radius:12px;color:var(--ink-3);font-size:9.5px;font-weight:600;transition:color .15s,background .15s;white-space:nowrap;overflow:hidden}
+  border-radius:12px;color:var(--ink-3);font-size:10.5px;font-weight:600;transition:color .15s,background .15s;white-space:nowrap;overflow:hidden}
 #tabs .t .ico{position:relative;display:block;width:21px;height:21px}
-@media (max-width:380px){#tabs .t{font-size:8.5px;letter-spacing:-.01em}}
+@media (max-width:380px){#tabs .t{font-size:10px}}
 #tabs .t svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #tabs .t .badge{position:absolute;top:-5px;right:-9px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--crit);
   color:#fff;font-size:9.5px;font-weight:700;line-height:16px;text-align:center;font-style:normal}
@@ -492,7 +495,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261009-090748 -->
+<!-- build 20261009-092608 -->
 
 <div id="shell">
   <header id="topbar">
@@ -500,6 +503,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
       <button class="mesnav" id="prevM" aria-label="Mes anterior">‹</button>
       <div class="mestitle"><span class="m" id="mesNom">—</span><span class="y" id="mesAnio">—</span></div>
       <button class="mesnav" id="nextM" aria-label="Mes siguiente">›</button>
+      <button class="mesnav perfil" id="btnAjustes" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-4 4.1-6 7.5-6s6.3 2 7.5 6"/></svg></button>
     </div>
     <div style="text-align:center"><button class="hoybtn" id="hoyBtn" hidden>Volver a hoy</button></div>
   </header>
@@ -543,8 +547,24 @@ function fechaCorta(iso){if(!iso)return"";const p=String(iso).split("-");return 
 function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALETA.length]+")";}
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
 
+/* apariencia: "auto" sigue al celu; "claro" / "oscuro" la fijan. Se guarda en este dispositivo. */
+function leerTema(){ try{ const t=localStorage.getItem("bp_tema"); return t==="claro"||t==="oscuro"?t:"auto"; }catch(e){ return "auto"; } }
+function aplicarTema(t){
+  const r=document.documentElement;
+  if(t==="claro") r.setAttribute("data-theme","light");
+  else if(t==="oscuro") r.setAttribute("data-theme","dark");
+  else r.removeAttribute("data-theme");
+  /* la barra del navegador acompaña al tema elegido */
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m=>{
+    if(!m.dataset.orig) m.dataset.orig=m.getAttribute("content");
+    m.setAttribute("content",t==="oscuro"?"#0c0e0d":t==="claro"?"#0f5c4a":m.dataset.orig);
+  });
+}
+function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} aplicarTema(t); }
+aplicarTema(leerTema());
+
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261009-090748";
+const BUILD="20261009-092608";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -1516,11 +1536,20 @@ const App={
       ajustes:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'
     };
     ICON.historial='<path d="M4 18l5-6 4 3 7-9M4 20h16"/>';
-    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",historial:"Mes a mes",ajustes:"Ajustes"};
-    const pend=store.listos?calc.alertas(this.mes).sinCargar.length:0;
+    /* Ajustes no va en la barra: se abre con la personita de arriba a la derecha */
+    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",historial:"Mes a mes"};
     $("#tabs").innerHTML=Object.keys(L).map(k=>
       `<button class="t" role="tab" data-tab="${k}" aria-selected="${k===this.tab}">
-        <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${k==="ajustes"&&pend?`<b class="badge">${pend}</b>`:""}</span>${L[k]}</button>`).join("");
+        <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg></span>${L[k]}</button>`).join("");
+    const ba=$("#btnAjustes");
+    if(ba){
+      ba.classList.toggle("on",this.tab==="ajustes"); ba.setAttribute("aria-pressed",String(this.tab==="ajustes"));
+      ba.onclick=()=>{
+        if(this.tab==="ajustes") this.tab=this.tabAntesAjustes||"resumen";
+        else { this.tabAntesAjustes=this.tab; this.tab="ajustes"; }
+        this.pintarTabs(); this.render(); window.scrollTo({top:0,behavior:"smooth"});
+      };
+    }
     $("#tabs").onclick=e=>{
       const b=e.target.closest("[data-tab]"); if(!b) return;
       this.tab=b.dataset.tab; this.pintarTabs(); this.render();
@@ -1559,10 +1588,10 @@ const App={
     return dias.map(d=>{
       const falta=d-hoy, vencido=falta<0;
       const cuando=vencido?`Venció el ${d}`:falta===0?"Vence hoy":falta===1?"Vence mañana":`Vence el ${d} · faltan ${falta} días`;
-      const nombres=porDia[d], txt=nombres.length<=3?nombres.join(", "):nombres.slice(0,3).join(", ")+` y ${nombres.length-3} más`;
-      return `<button type="button" class="vence ${vencido?"crit":""}" data-irvence="1">
+      const nombres=porDia[d], txt=nombres.length===1?nombres[0]:nombres.slice(0,-1).join(", ")+" y "+nombres[nombres.length-1];
+      return `<div class="vence ${vencido?"crit":""}" role="status">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>
-        <span><b>${cuando}</b><small>Falta cargar: ${esc(txt)}</small></span></button>`;
+        <span><b>${cuando}</b><small>Falta cargar: ${esc(txt)}</small></span></div>`;
     }).join("");
   },
 
@@ -3003,18 +3032,32 @@ const App={
     const base=diccionarioBase(c.cats);
     const propios=Object.entries(c.aprendidas||{});
 
+    const tema=leerTema();
     return `
-    <section class="card" style="display:flex;flex-direction:column;gap:11px">
-      <div class="sechead" style="margin:0"><h2 class="sec">Ajustes</h2></div>
-      <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:500;cursor:pointer">
-        <input type="checkbox" id="swArrastre" ${c.arrastre?"checked":""} style="width:auto;margin:3px 0 0">
-        <span>Arrastrar el saldo al mes siguiente
-          <span style="display:block;font-size:12px;color:var(--ink-3);font-weight:400;margin-top:2px">
-            Lo que te sobra o debés se suma al resultado del mes que sigue.</span></span></label>
-      <div style="font-size:12px;color:var(--ink-3);border-top:1px solid var(--line);padding-top:11px">
-        ${store.usaDb?"Tus datos se guardan en tu cuenta y te siguen entre dispositivos."
-                     :"Tus datos se guardan en este teléfono. Hacé un respaldo de vez en cuando."}</div>
+    <section class="card" style="display:flex;flex-direction:column;gap:6px">
+      <h2 class="sec">Ajustes</h2>
+      <p class="hint" style="margin:0">${store.usaDb?"Tus datos se guardan en tu cuenta y te siguen entre dispositivos."
+                     :"Tus datos se guardan en este teléfono. Hacé un respaldo de vez en cuando."}</p>
     </section>
+
+    <details class="set"><summary>Apariencia <span class="eyebrow">${{auto:"automática",claro:"clara",oscuro:"oscura"}[tema]}</span></summary>
+      <div class="body">
+        <div class="segs mini" role="tablist">
+          <button role="tab" data-tema="auto" aria-selected="${tema==="auto"}">Automática</button>
+          <button role="tab" data-tema="claro" aria-selected="${tema==="claro"}">Clara</button>
+          <button role="tab" data-tema="oscuro" aria-selected="${tema==="oscuro"}">Oscura</button>
+        </div>
+        <p class="hint">Automática sigue el modo claro u oscuro de tu celu.</p>
+      </div></details>
+
+    <details class="set"><summary>Arrastrar el saldo al mes siguiente <span class="eyebrow">${c.arrastre?"activado":"apagado"}</span></summary>
+      <div class="body">
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:500;cursor:pointer">
+          <input type="checkbox" id="swArrastre" ${c.arrastre?"checked":""} style="width:auto;margin:3px 0 0">
+          <span>Pasar el saldo al mes que sigue
+            <span style="display:block;font-size:12px;color:var(--ink-3);font-weight:400;margin-top:2px">
+              Lo que te sobra entra como ingreso del mes siguiente, y lo que te falta, como deuda.</span></span></label>
+      </div></details>
 
     <details class="set"><summary>Bloqueo con huella o PIN
       <span class="eyebrow">${lock.activo()?"activo":"apagado"}</span></summary>
@@ -3039,15 +3082,6 @@ const App={
       const vacio=t=>`<p class="hint">${t}</p>`;
       const disponible=a.conSaldo.filter(f=>!f.ing).reduce((s,f)=>s+(f.tope-f.gastado),0);
       return `
-    <details class="set" id="setAlertas"><summary>Sin cargar <span class="eyebrow">${a.sinCargar.length}</span></summary>
-      <div class="body"><p class="hint">Pagos con vencimiento de ${mesN} que todavía no cargaste.</p>
-        ${a.sinCargar.length?`<div class="allist">${a.sinCargar.map(f=>fila(f,"vence el "+f.vence,new Date().getDate()>f.vence&&this.mes===mesKey(new Date())?"crit":"none")).join("")}</div>`:vacio("Todos los pagos con vencimiento están cargados.")}
-        <p class="hint">El día de vencimiento se cambia en cada categoría (Resumen › Tus categorías).</p></div></details>
-
-    <details class="set"><summary>Exceso <span class="eyebrow">${a.pasados.length}</span></summary>
-      <div class="body"><p class="hint">Subcategorías que ya pasaron su tope este mes.</p>
-        ${a.pasados.length?`<div class="allist">${a.pasados.map(f=>fila(f,"+"+money(f.gastado-f.tope),"crit")).join("")}</div>`:vacio("Nada pasado del tope.")}</div></details>
-
     <details class="set"><summary>Saldo disponible <span class="eyebrow num">${money(disponible)}</span></summary>
       <div class="body"><p class="hint">Lo que todavía podés gastar en cada una sin pasarte del tope.</p>
         ${a.conSaldo.length?`<div class="allist">${a.conSaldo.map(f=>fila(f,(f.ing?"faltan ":"quedan ")+money(f.tope-f.gastado),"ok")).join("")}</div>`:vacio("Sin saldo pendiente en ninguna.")}</div></details>`; })()}
@@ -3175,14 +3209,18 @@ const App={
     const bf=$("#btnFuentes"); if(bf) bf.onclick=()=>this.gestionFuentes();
     v.querySelectorAll("[data-hs]").forEach(b=>b.onclick=()=>{this.serieHist=b.dataset.hs;this.render();});
     v.querySelectorAll("[data-subhist]").forEach(b=>b.onclick=()=>{this.subHist=b.dataset.subhist;this.render();});
-    v.querySelectorAll("[data-irvence]").forEach(b=>b.onclick=()=>{
-      this.tab="ajustes"; this.pintarTabs(); this.render();
-      const d=$("#setAlertas"); if(d){ d.open=true; d.scrollIntoView({behavior:"smooth",block:"start"}); }
+    /* cambia en el momento, sin redibujar (así la sección queda abierta) */
+    v.querySelectorAll("[data-tema]").forEach(b=>b.onclick=()=>{
+      guardarTema(b.dataset.tema);
+      v.querySelectorAll("[data-tema]").forEach(x=>x.setAttribute("aria-selected",String(x===b)));
+      const e=b.closest("details").querySelector("summary .eyebrow");
+      if(e) e.textContent={auto:"automática",claro:"clara",oscuro:"oscura"}[b.dataset.tema];
     });
     v.querySelectorAll("[data-cbcat]").forEach(b=>b.onclick=()=>{ const k="cb:"+b.dataset.cbcat; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-bar]").forEach(b=>b.onclick=()=>this.mostrarBarra(b));
 
-    const sw=$("#swArrastre"); if(sw) sw.onchange=()=>{store.config.arrastre=sw.checked;store.guardarConfig();};
+    const sw=$("#swArrastre"); if(sw) sw.onchange=()=>{store.config.arrastre=sw.checked;store.guardarConfig();
+      const e=sw.closest("details").querySelector("summary .eyebrow"); if(e) e.textContent=sw.checked?"activado":"apagado";};
 
     const al=$("#activarLock"); if(al) al.onclick=()=>this.activarBloqueo();
     const cpn=$("#cambiarPin"); if(cpn) cpn.onclick=()=>this.cambiarPin();
