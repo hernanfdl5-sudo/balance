@@ -495,7 +495,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261009-092608 -->
+<!-- build 20261009-094754 -->
 
 <div id="shell">
   <header id="topbar">
@@ -547,8 +547,9 @@ function fechaCorta(iso){if(!iso)return"";const p=String(iso).split("-");return 
 function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALETA.length]+")";}
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
 
-/* apariencia: "auto" sigue al celu; "claro" / "oscuro" la fijan. Se guarda en este dispositivo. */
-function leerTema(){ try{ const t=localStorage.getItem("bp_tema"); return t==="claro"||t==="oscuro"?t:"auto"; }catch(e){ return "auto"; } }
+/* apariencia: "claro" / "oscuro". Hasta que la elijas, sigue al modo del celu. Se guarda en este dispositivo. */
+function temaGuardado(){ try{ const t=localStorage.getItem("bp_tema"); return t==="claro"||t==="oscuro"?t:null; }catch(e){ return null; } }
+function leerTema(){ return temaGuardado()||(matchMedia("(prefers-color-scheme: dark)").matches?"oscuro":"claro"); }
 function aplicarTema(t){
   const r=document.documentElement;
   if(t==="claro") r.setAttribute("data-theme","light");
@@ -561,10 +562,10 @@ function aplicarTema(t){
   });
 }
 function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} aplicarTema(t); }
-aplicarTema(leerTema());
+aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261009-092608";
+const BUILD="20261009-094754";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -3040,14 +3041,12 @@ const App={
                      :"Tus datos se guardan en este teléfono. Hacé un respaldo de vez en cuando."}</p>
     </section>
 
-    <details class="set"><summary>Apariencia <span class="eyebrow">${{auto:"automática",claro:"clara",oscuro:"oscura"}[tema]}</span></summary>
+    <details class="set"><summary>Apariencia <span class="eyebrow">${tema==="oscuro"?"oscura":"clara"}</span></summary>
       <div class="body">
         <div class="segs mini" role="tablist">
-          <button role="tab" data-tema="auto" aria-selected="${tema==="auto"}">Automática</button>
           <button role="tab" data-tema="claro" aria-selected="${tema==="claro"}">Clara</button>
           <button role="tab" data-tema="oscuro" aria-selected="${tema==="oscuro"}">Oscura</button>
         </div>
-        <p class="hint">Automática sigue el modo claro u oscuro de tu celu.</p>
       </div></details>
 
     <details class="set"><summary>Arrastrar el saldo al mes siguiente <span class="eyebrow">${c.arrastre?"activado":"apagado"}</span></summary>
@@ -3214,7 +3213,7 @@ const App={
       guardarTema(b.dataset.tema);
       v.querySelectorAll("[data-tema]").forEach(x=>x.setAttribute("aria-selected",String(x===b)));
       const e=b.closest("details").querySelector("summary .eyebrow");
-      if(e) e.textContent={auto:"automática",claro:"clara",oscuro:"oscura"}[b.dataset.tema];
+      if(e) e.textContent=b.dataset.tema==="oscuro"?"oscura":"clara";
     });
     v.querySelectorAll("[data-cbcat]").forEach(b=>b.onclick=()=>{ const k="cb:"+b.dataset.cbcat; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-bar]").forEach(b=>b.onclick=()=>this.mostrarBarra(b));
