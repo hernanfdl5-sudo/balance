@@ -183,6 +183,8 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .tag-crit{background:var(--crit-soft);color:var(--crit-ink)}
 .tag-none{background:var(--surface-3);color:var(--ink-3)}
 .tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px}
+.cathead .catname>span{min-width:0}
+.catnums .a.loss,.catnums .b.loss{color:var(--crit-ink)}
 /* botón para dar por cerrada una categoría o subcategoría en el mes */
 .cerrar{display:inline-flex;align-items:center;gap:4px;padding:3px 10px 3px 7px;border-radius:999px;border:1px solid var(--line-2);
   background:var(--surface);color:var(--ink-2);font-size:11.5px;font-weight:600;line-height:1.4;flex:none;white-space:nowrap}
@@ -482,7 +484,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261008-110513 -->
+<!-- build 20261009-085855 -->
 
 <div id="shell">
   <header id="topbar">
@@ -534,7 +536,7 @@ function colorDe(i){return "var("+PALETA[((i%PALETA.length)+PALETA.length)%PALET
 function titulizar(s){s=String(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261008-110513";
+const BUILD="20261009-085855";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -1964,8 +1966,8 @@ const App={
     const sob=Math.max(calc.sobrante(key),0), deu=calc.deuda(key);
     const ing=mano?calc.ingresos(key):calc.ingresoMes(key);
     /* proyectado: cada categoría cuenta su tope, o lo gastado si ya lo pasó (y lo gastado sin tope) */
-    /* topes efectivos: en lo cerrado cuenta lo que pagaste, así "de más" es sólo exceso real */
-    const topes=calc.presupuestoEf(key)+deu, gasProy=proy?calc.estimado(key):0, deMas=Math.max(gasProy-topes,0);
+    /* contra los topes originales: lo gastado de menos en lo cerrado compensa lo gastado de más */
+    const topes=calc.presupuesto(key)+deu, gasProy=proy?calc.estimado(key):0, difProy=gasProy-topes;
     const gas=proy?gasProy:calc.gastado(key);
     const final=ing-gas-inv;
     const acc=final>=0?"var(--good-ink)":"var(--crit-ink)";
@@ -1993,7 +1995,7 @@ const App={
       <div class="miniflow">
         <div><span class="k">${mano?"Retiraste":sinSueldo?"Cobraste":"Sueldo del mes"}</span><span class="v num" style="color:var(--good-ink)">${money(ing)}</span></div>
         <div><span class="k">${proy?"Gastos proyectados":"Gastos"}</span><span class="v num" style="color:var(--crit-ink)">${gas>0?"−":""}${money(gas)}</span>
-          ${proy&&deMas>0.5?`<span class="s num" style="color:var(--crit-ink)">topes ${money(topes)} + ${money(deMas)} de más</span>`:""}</div>
+          ${proy&&Math.abs(difProy)>0.5?`<span class="s num" style="color:var(${difProy>0?"--crit-ink":"--good-ink"})">topes ${money(topes)} ${difProy>0?"+":"−"} ${money(Math.abs(difProy))} ${difProy>0?"de más":"de menos"}</span>`:""}</div>
         <div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${inv>0?"−":""}${money(inv)}</span></div>
       </div></section>
 
@@ -2405,9 +2407,12 @@ const App={
     const p=c.presup>0?c.gastado/c.presup*100:null;
     /* la barra compara el total gastado con el tope total. Amarillo mientras quede algo por pagar;
        después, rojo o verde según el total. Las etiquetas cuentan las partes, sin compensarse. */
-    const est=c.presup>0?(c.faltan>0.5?"warn":c.gastado>c.presup*1.01?"crit":"ok"):"none";
+    /* pasarse del tope manda: rojo aunque todavía quede algo por cargar */
+    const excedido=c.presup>0&&c.gastado>c.presup*1.01;
+    const est=c.presup>0?(excedido?"crit":c.faltan>0.5?"warn":"ok"):"none";
     const fill=colorEstado(est,color);
     const share=totalMes>0?c.gastado/totalMes*100:0;
+    const pillExceso=excedido?`<span class="metertag tag-crit">excedido ${money(c.gastado-c.presup)} (${pctSigno((c.gastado-c.presup)/c.presup*100)})</span>`:"";
     const donde=(n)=>!n||!n.length?"":n.length<=2?" en "+n.join(" y "):" en "+n.length+" subcategorías";
     const tilde=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
     const cerradaTodo=c.cerrada||c.todasCerradas;
@@ -2424,13 +2429,15 @@ const App={
           ?`<span class="metertag tag-ok total">cerrada · justo en el tope</span>`
           :`<span class="metertag tag-${dif>0?"crit":"ok"} total">cerrada · ${money(Math.abs(dif))} ${dif>0?"de más":"menos"} (${pctSigno(dif/c.presup*100)})</span>`);
       }else if(c.porSubs){
-        /* abierta: sólo qué está listo y qué falta pagar; el exceso ya se ve en la barra */
+        /* abierta: si se pasó del tope, primero eso; después qué está listo y qué falta pagar */
+        if(pillExceso) pills.push(pillExceso);
         if(c.listasEn.length) pills.push(`<span class="metertag tag-ok">✓ ${esc(lista(c.listasEn))} ${c.listasEn.length===1?"lista":"listas"}</span>`);
         if(c.sinCargarEn.length) pills.push(`<span class="metertag tag-warn">falta cargar ${esc(lista(c.sinCargarEn))}</span>`);
         if(c.quedan>0.5) pills.push(`<span class="metertag tag-warn">faltan ${money(c.quedan)}${esc(donde(c.quedanEn))}</span>`);
         if(!c.quedanEn.length&&!c.sinCargarEn.length) pills.push(`<span class="metertag tag-none">todo cargado · cerrala para ver el balance</span>`);
       }else{
-        pills.push(c.gastado<=0?`<span class="metertag tag-warn">falta cargar</span>`
+        pills.push(pillExceso?pillExceso
+          :c.gastado<=0?`<span class="metertag tag-warn">falta cargar</span>`
           :c.quedan>0.5?`<span class="metertag tag-warn">faltan ${money(c.quedan)}</span>`
           :`<span class="metertag tag-ok">✓ lista</span>`);
       }
@@ -2479,9 +2486,10 @@ const App={
 
     return `<div class="catrow ${abierta?"open":""}">
       <button type="button" class="cathead" data-cat="${esc(c.cat.id)}" aria-expanded="${abierta}">
-        <span class="catname"><i class="dot" style="background:${color}"></i><b>${esc(c.cat.nombre)}</b></span>
-        <span class="catnums"><span class="a num">${money(c.gastado)}</span>
-          <span class="b num">${c.gastado>0?pct(share)+" del mes":"sin gastos"}</span></span>
+        <span class="catname"><i class="dot" style="background:${color}"></i><span><b>${esc(c.cat.nombre)}</b>
+          <small class="secsub">${c.gastado>0?pct(share)+" del mes":"sin gastos"}</small></span></span>
+        <span class="catnums"><span class="a num ${excedido?"loss":""}">${money(c.gastado)}</span>
+          <span class="b num ${excedido?"loss":""}">${c.presup>0?"de "+money(c.presup):"sin tope"}</span></span>
       </button>
       <div class="meter"><i style="width:${p===null?0:Math.min(p,100)}%;background:${fill}"></i></div>
       ${tag}${subs}</div>`;
