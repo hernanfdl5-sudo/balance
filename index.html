@@ -505,7 +505,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261009-195200 -->
+<!-- build 20261009-195535 -->
 
 <div id="shell">
   <header id="topbar">
@@ -575,7 +575,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261009-195200";
+const BUILD="20261009-195535";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -2396,7 +2396,7 @@ const App={
     if(!filas.length) return "";
     const mas=filas.filter(x=>x.d>0), menos=filas.filter(x=>x.d<0);
     const suma=l=>l.reduce((s,x)=>s+Math.abs(x.d),0);
-    let h=`<section class="card"><div class="sechead"><h2 class="sec">Cambios</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>`;
+    let h=`<section class="card"><div class="sechead"><h2 class="sec">Contra el mes pasado</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>`;
     /* cada grupo se despliega al tocarlo; al abrir la app arrancan cerrados */
     const chev=`<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>`;
     const grupo=(k,cls,titulo,fl,l,sep)=>{ const ab=!!this.abiertas["cbg:"+k];
@@ -2445,7 +2445,7 @@ const App={
     };
     const nombre={gastos:"Gastos",ingresos:"Ingresos",ahorro:"Ahorro",sobrante:"Sobrante"}[sel];
 
-    let h=`<section class="card"><div class="sechead"><h2 class="sec">Cambios</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>
+    let h=`<section class="card"><div class="sechead"><h2 class="sec">Contra el mes pasado</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>
       <div class="cbtotal ${clase(dt)}"><span>${nombre}</span><b class="num">${flecha(dt)} ${money(Math.abs(dt))}${pctDe(dt,Math.abs(tot0))}</b></div>
       <p class="hint" style="margin:4px 0 0">${money(tot0)} en ${prevN.toLowerCase()} → ${money(tot1)} en ${mesN.toLowerCase()}.</p>`;
     /* ingresos y ahorro: alcanza con el total. En sobrante sí vale saber por qué cambió */
