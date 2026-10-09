@@ -361,6 +361,16 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .gain{color:var(--good-ink)} .loss{color:var(--crit-ink)}
 .hero .big2{font-family:"Instrument Serif",Georgia,serif;font-size:27px;line-height:1.05;letter-spacing:-.3px;color:var(--ink);margin:2px 0 6px;opacity:.92}
 .miniflow.tres{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 10px}
+/* proyectado · gastado  +  ahorro = lo que salió */
+.salio{display:flex;align-items:flex-start;gap:8px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.salio>div,.sgrupo>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.salio>div:last-child{flex:1}
+.sgrupo{flex:2;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
+.sgrupo .metertag{grid-column:1/-1;justify-self:start;width:fit-content;max-width:100%;margin-top:2px}
+.salio .k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.salio .v{font-size:15px;font-weight:600;white-space:nowrap}
+@media (max-width:380px){.salio .v{font-size:13.5px}}
+.splus{flex:none;font-size:20px;line-height:1;color:var(--ink-3);padding-top:13px}
 .miniflow.dos{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
 /* lectura paso a paso: pusiste → hoy tenés → diferencia, y sus causas */
 .story{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
@@ -392,6 +402,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .hist .hr:last-child{border-bottom:none}
 .hist .hr span:first-child{font-weight:600;text-transform:capitalize}
 .hist .hr small{color:var(--ink-3);font-weight:500}
+.hist .hr em{display:block;font-style:normal;font-size:10px;line-height:1.2;color:var(--ink-3);font-weight:600}
 .hist .hr.now{background:var(--surface-2);border-radius:8px}
 /* cambios vs el mes anterior */
 .cbtotal{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:15px;font-weight:600}
@@ -403,20 +414,13 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 .cbn{display:flex;flex-direction:column;min-width:0}
 .cbn b{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cbn small{font-size:11px;color:var(--ink-3)}
+.cbn b small{font-weight:500;margin-left:2px}
 .cbd{flex:none;text-align:right;font-weight:700;font-size:14px;white-space:nowrap}
 .cbd small{display:block;font-size:11px;font-weight:600;opacity:.85}
 .cbgrupo{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-radius:11px;font-weight:700;font-size:13.5px}
 .cbgrupo b{font-weight:700;white-space:nowrap}
 .cbgrupo.loss{background:var(--crit-soft);color:var(--crit-ink)}
 .cbgrupo.gain{background:var(--good-soft);color:var(--good-ink)}
-.cbbtn{width:100%;text-align:left;border-radius:8px}
-.cbbtn:hover{background:var(--surface-2)}
-.cbbtn .chev{width:14px;height:14px;stroke:var(--ink-3);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;margin-left:4px;transition:transform .15s}
-.cbbtn.open .chev{transform:rotate(180deg)}
-.cbsubs{margin:0 0 6px 12px;padding-left:10px;border-left:2px solid var(--line-2)}
-.cbsub{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 2px}
-.cbsub .cbn b{font-size:13px;font-weight:500}
-.cbsub .cbd{font-size:13px}
 .cointotal span{flex:none;margin-right:10px}
 .cointotal b{text-align:right}
 .miniflow.tres .k{white-space:normal;line-height:1.25}
@@ -495,7 +499,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261009-094754 -->
+<!-- build 20261009-193002 -->
 
 <div id="shell">
   <header id="topbar">
@@ -565,7 +569,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261009-094754";
+const BUILD="20261009-193002";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -1581,19 +1585,16 @@ const App={
      Sólo en el mes en curso (de los meses pasados no tiene sentido avisar). */
   bannerVencimientos(){
     if(!store.listos||this.mes!==mesKey(new Date())) return "";
-    const hoy=new Date().getDate(), pend=calc.alertas(this.mes).sinCargar;
-    const porDia={};
-    for(const f of pend){ if(f.vence-hoy<=5) (porDia[f.vence]=porDia[f.vence]||[]).push(f.nombre||f.cat.nombre); }
-    const dias=Object.keys(porDia).map(Number).sort((a,b)=>a-b);
-    if(!dias.length) return "";
-    return dias.map(d=>{
-      const falta=d-hoy, vencido=falta<0;
-      const cuando=vencido?`Venció el ${d}`:falta===0?"Vence hoy":falta===1?"Vence mañana":`Vence el ${d} · faltan ${falta} días`;
-      const nombres=porDia[d], txt=nombres.length===1?nombres[0]:nombres.slice(0,-1).join(", ")+" y "+nombres[nombres.length-1];
-      return `<div class="vence ${vencido?"crit":""}" role="status">
+    const hoy=new Date().getDate();
+    /* a partir de 5 días antes del vencimiento; en rojo cuando ya pasó */
+    const pend=calc.alertas(this.mes).sinCargar.filter(f=>f.vence-hoy<=5);
+    if(!pend.length) return "";
+    const nombres=pend.map(f=>f.nombre||f.cat.nombre);
+    const txt=nombres.length===1?nombres[0]:nombres.slice(0,-1).join(", ")+" y "+nombres[nombres.length-1];
+    const vencido=pend.some(f=>f.vence<hoy);
+    return `<div class="vence ${vencido?"crit":""}" role="status">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>
-        <span><b>${cuando}</b><small>Falta cargar: ${esc(txt)}</small></span></div>`;
-    }).join("");
+        <span><b>Falta cargar</b><small>${esc(txt)}</small></span></div>`;
   },
 
   bannerRespaldo(){
@@ -2104,22 +2105,36 @@ const App={
         <div class="sechead"><h2 class="sec">En qué se fue</h2>
           <span class="eyebrow">${conGasto.length} categoría${conGasto.length===1?"":"s"}${ahorroMes>0?" + ahorro":""}</span></div>
         ${this.donut(items,salio,"Salió",money(salio),MESES[Number(key.split("-")[1])-1])}
-        <div class="miniflow tres" style="margin-top:12px">
-          <div><span class="k">Gastado</span><span class="v num" style="color:var(--crit-ink)">${money(gas)}</span></div>
+        <div class="salio">
+          <div class="sgrupo">
+            <div><span class="k">Proyectado</span><span class="v num">${presup>0?money(presup):"—"}</span></div>
+            <div><span class="k">Gastado</span><span class="v num" style="color:var(--crit-ink)">${money(gas)}</span></div>
+            ${presup>0?(()=>{ const e=estadoTope(gas,presup), d=presup-gas;
+              const fr=d<-presup*0.01?`Te pasaste ${money(-d)} · ${pct(-d/presup*100)}`:d>presup*0.01?`Faltan ${money(d)} · ${pct(d/presup*100)}`:"Justo en lo proyectado";
+              return `<span class="metertag tag-${e}">${fr}</span>`; })():""}
+          </div>
+          <span class="splus" aria-hidden="true">+</span>
           <div><span class="k">Ahorro</span><span class="v num" style="color:var(--warn-ink)">${money(ahorroMes)}</span></div>
-          <div><span class="k">Proyectado</span><span class="v num">${presup>0?money(presup):"—"}</span></div>
         </div>
-        ${presup>0?(()=>{ const e=estadoTope(gas,presup); const fr=gas>presup*1.01?`Vas ${money(gas-presup)} por encima de lo proyectado · ${pct(gas/presup*100)}`:gas<presup*0.99?`Vas ${money(presup-gas)} por debajo de lo proyectado · ${pct(gas/presup*100)}`:"Justo en lo proyectado"; return `<div style="text-align:center"><span class="metertag tag-${e}" style="margin-top:10px">${fr}</span></div>`; })()
-          :`<p class="hint" style="text-align:center;margin:8px 0 0">Tocá una porción para ver cuánto es.</p>`}
       </section>`;
     }
 
+    /* filtro: todas, abiertas (todavía se gasta) o cerradas este mes */
+    const estaCerrada=c=>!!(c.cerrada||c.todasCerradas);
+    const fc=this.filtroCat||"todas";
+    const nCer=lista.filter(estaCerrada).length, nAb=lista.length-nCer;
+    const visibles=fc==="cerradas"?lista.filter(estaCerrada):fc==="abiertas"?lista.filter(c=>!estaCerrada(c)):lista;
     h+=`<section class="card">
       <div class="sechead"><h2 class="sec">Categorías</h2>
         <button class="btn out sm" data-irpresup="1">Presupuestos</button></div>
       ${!gas&&!presup?`<p class="hint" style="margin:-4px 0 10px">Todavía no hay gastos ni topes este mes. Cargá desde <b>Cargar</b> o poné los presupuestos.</p>`:""}
-      <div class="catlist">${lista.map(c=>this.filaCategoria(c,gas)).join("")}
-        ${ahorroMes>0?`<div class="catrow ahorrorow">
+      ${nCer>0||fc!=="todas"?`<div class="segs mini" role="tablist" style="margin-bottom:10px">
+        <button role="tab" data-fcat="todas" aria-selected="${fc==="todas"}">Todas <small>${lista.length}</small></button>
+        <button role="tab" data-fcat="abiertas" aria-selected="${fc==="abiertas"}">Abiertas <small>${nAb}</small></button>
+        <button role="tab" data-fcat="cerradas" aria-selected="${fc==="cerradas"}">Cerradas <small>${nCer}</small></button></div>`:""}
+      ${!visibles.length?`<p class="hint" style="margin:4px 0 8px">${fc==="cerradas"?"Todavía no cerraste ninguna categoría este mes.":"Ya cerraste todas las categorías del mes."}</p>`:""}
+      <div class="catlist">${visibles.map(c=>this.filaCategoria(c,gas)).join("")}
+        ${ahorroMes>0&&fc==="todas"?`<div class="catrow ahorrorow">
           <div class="cathead"><span class="catname"><i class="dot" style="background:var(--warn)"></i><span><b>Ahorro</b><small class="secsub">no es un gasto: plata que sigue siendo tuya</small></span></span>
             <span class="catnums"><span class="a num" style="color:var(--warn-ink)">${money(ahorroMes)}</span><span class="b num">${gas+ahorroMes>0?pct(ahorroMes/(gas+ahorroMes)*100)+" de lo que salió":""}</span></span></div></div>`:""}
       </div>
@@ -2295,53 +2310,48 @@ const App={
       h+=`<section class="card"><div class="sechead"><h2 class="sec">Detalle</h2><span class="eyebrow">${conDatos.length} mes${conDatos.length===1?"":"es"}</span></div>
         <div class="hist"><div class="hh"><span>Mes</span><span>Ingresos</span><span>Gastos</span><span>Ahorro</span><span>Sobrante</span></div>`
         + conDatos.slice().reverse().map(s=>{ const i=calc.ingresoMes(s.key),g=calc.gastado(s.key),a=calc.invertido(s.key),r=i-g-a;
+          /* debajo de gastos y ahorro, qué parte de lo que entró se fue a cada uno */
+          const de=v=>i>0?`<em>${pct(v/i*100)}</em>`:"";
           return `<div class="hr ${s.key===key?"now":""}"><span>${MESES_CORTO[s.mes-1]} <small>${s.key.slice(2,4)}</small></span>
-            <span class="num gain">${moneyShort(i)}</span><span class="num" style="color:var(--crit-ink)">${moneyShort(g)}</span>
-            <span class="num" style="color:var(--warn-ink)">${moneyShort(a)}</span><span class="num ${r>=0?"gain":"loss"}">${(r<0?"−":"")+moneyShort(Math.abs(r))}</span></div>`; }).join("")
-        + `</div><p class="hint" style="margin:10px 0 0">Montos abreviados (k = mil, M = millón).</p></section>`;
+            <span class="num gain">${moneyShort(i)}</span><span class="num" style="color:var(--crit-ink)">${moneyShort(g)}${de(g)}</span>
+            <span class="num" style="color:var(--warn-ink)">${moneyShort(a)}${de(a)}</span><span class="num ${r>=0?"gain":"loss"}">${(r<0?"−":"")+moneyShort(Math.abs(r))}</span></div>`; }).join("")
+        + `</div><p class="hint" style="margin:10px 0 0">El porcentaje es la parte de los ingresos que fue a gastos y a ahorro. Montos abreviados (k = mil, M = millón).</p></section>`;
     }
     h+=this.bloqueCambios(key,sel,SER[sel]);
     return h;
   },
 
-  /* cambios de gastos: sólo categorías terminadas (cerradas, o todas si el mes ya pasó),
-     y al tocar una con subcategorías, en cuáles subió o bajó */
+  /* cambios de gastos: sólo categorías terminadas (cerradas, o todas si el mes ya pasó).
+     Se lista por subcategoría (la categoría va como referencia); las que no tienen subs van enteras */
   cambiosGastos(key){
     const prev=keyMas(key,-1);
     const mesN=MESES[Number(key.split("-")[1])-1], prevN=MESES[Number(prev.split("-")[1])-1];
     const terminado=key<mesKey(new Date());
     const cA=calc.porCategoria(prev), cB=calc.porCategoria(key);
     const esFinal=c=>terminado||c.virtual||c.cerrada||c.todasCerradas;
-    const filas=[], abiertas=[]; let tot0=0, tot1=0;
+    const filas=[];
     const porNombre=l=>{ const o={}; (l||[]).forEach(x=>{ o[x.nombre]=(o[x.nombre]||0)+x.monto; }); return o; };
     for(const id of new Set([...Object.keys(cA),...Object.keys(cB)])){
       const a=cA[id], b=cB[id], v0=a?a.gastado:0, v1=b?b.gastado:0;
-      if(b&&!esFinal(b)){ if(v0>0||v1>0||b.presup>0) abiertas.push(b.cat.nombre); continue; }
+      if(b&&!esFinal(b)) continue;
       if(v0<1&&v1<1) continue;
-      tot0+=v0; tot1+=v1;
-      const cat=(b||a).cat; let subs=[];
+      const cat=(b||a).cat;
       if(cat.subs&&cat.subs.length){
         const m0=porNombre(a&&a.lista), m1=porNombre(b&&b.lista);
-        subs=Object.keys({...m0,...m1}).map(n=>({n,v0:m0[n]||0,v1:m1[n]||0,d:(m1[n]||0)-(m0[n]||0)}))
-          .filter(x=>Math.abs(x.d)>=1).sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
-      }
-      if(Math.abs(v1-v0)>=1) filas.push({id,n:cat.nombre,v0,v1,d:v1-v0,subs});
+        for(const n of Object.keys({...m0,...m1})){
+          const s0=m0[n]||0, s1=m1[n]||0;
+          if(Math.abs(s1-s0)>=1) filas.push({n,cat:cat.nombre,v0:s0,v1:s1,d:s1-s0});
+        }
+      }else if(Math.abs(v1-v0)>=1) filas.push({n:cat.nombre,cat:"",v0,v1,d:v1-v0});
     }
+    /* de la que más se movió a la que menos */
     filas.sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
     /* en gastos, subir es malo (rojo) y bajar es bueno (verde) */
     const cls=d=>Math.abs(d)<1?"":d>0?"loss":"gain";
     const flecha=d=>d>0?"▲":d<0?"▼":"=";
     const pctDe=(d,base)=>base>0?" ("+pctSigno(d/base*100)+")":"";
-    const chev=`<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>`;
-    const fila=x=>{
-      const abierta=!!this.abiertas["cb:"+x.id], tiene=x.subs.length>0;
-      const cuerpo=`<span class="cbn"><b>${esc(x.n)}${tiene?chev:""}</b><small class="num">${money(x.v0)} → ${money(x.v1)}</small></span>
-        <span class="cbd num ${cls(x.d)}">${flecha(x.d)} ${money(Math.abs(x.d))}<small>${x.v0>0?pctDe(x.d,x.v0):" (nuevo)"}</small></span>`;
-      if(!tiene) return `<div class="cbrow">${cuerpo}</div>`;
-      return `<button type="button" class="cbrow cbbtn ${abierta?"open":""}" data-cbcat="${esc(x.id)}" aria-expanded="${abierta}">${cuerpo}</button>
-        ${abierta?`<div class="cbsubs">${x.subs.map(s=>`<div class="cbsub"><span class="cbn"><b>${esc(s.n)}</b><small class="num">${money(s.v0)} → ${money(s.v1)}</small></span>
-          <span class="cbd num ${cls(s.d)}">${flecha(s.d)} ${money(Math.abs(s.d))}<small>${s.v0>0?pctDe(s.d,s.v0):" (nuevo)"}</small></span></div>`).join("")}</div>`:""}`;
-    };
+    const fila=x=>`<div class="cbrow"><span class="cbn"><b>${esc(x.n)}${x.cat?` <small>${esc(x.cat)}</small>`:""}</b><small class="num">${money(x.v0)} → ${money(x.v1)}</small></span>
+        <span class="cbd num ${cls(x.d)}">${flecha(x.d)} ${money(Math.abs(x.d))}<small>${x.v0>0?pctDe(x.d,x.v0):" (nuevo)"}</small></span></div>`;
     /* sin categorías terminadas que comparar, el bloque no aparece */
     if(!filas.length) return "";
     const mas=filas.filter(x=>x.d>0), menos=filas.filter(x=>x.d<0);
@@ -2387,20 +2397,13 @@ const App={
       return `<div class="cbrow"><span class="cbn"><b>${esc(x.n)}</b><small class="num">${money(x.v0)} → ${money(x.v1)}</small></span>
         <span class="cbd num ${c}">${flecha(x.d)} ${money(Math.abs(x.d))}<small>${x.v0>0?pctDe(x.d,x.v0):x.v1>0?" (nuevo)":""}</small></span></div>`;
     };
-    const subieron=filas.filter(x=>x.d>0), bajaron=filas.filter(x=>x.d<0);
     const nombre={gastos:"Gastos",ingresos:"Ingresos",ahorro:"Ahorro",sobrante:"Sobrante"}[sel];
-    const enCurso=key===mesKey(new Date());
 
     let h=`<section class="card"><div class="sechead"><h2 class="sec">Cambios</h2><span class="eyebrow">${mesN} vs ${prevN}</span></div>
       <div class="cbtotal ${clase(dt)}"><span>${nombre}</span><b class="num">${flecha(dt)} ${money(Math.abs(dt))}${pctDe(dt,Math.abs(tot0))}</b></div>
-      <p class="hint" style="margin:4px 0 10px">${money(tot0)} en ${prevN.toLowerCase()} → ${money(tot1)} en ${mesN.toLowerCase()}${enCurso?" (este mes todavía está en curso)":""}.</p>`;
-    if(!filas.length) return h+`<p class="hint">Sin cambios entre un mes y el otro.</p></section>`;
-    if(sel==="sobrante"){
-      h+=`<div class="eyebrow">Por qué cambió</div><div class="cblist">${filas.map(fila).join("")}</div>`;
-    }else{
-      if(subieron.length) h+=`<div class="eyebrow">${sel==="gastos"?"Gastaste más en":"Subieron"}</div><div class="cblist">${subieron.map(fila).join("")}</div>`;
-      if(bajaron.length) h+=`<div class="eyebrow" style="margin-top:10px">${sel==="gastos"?"Gastaste menos en":"Bajaron"}</div><div class="cblist">${bajaron.map(fila).join("")}</div>`;
-    }
+      <p class="hint" style="margin:4px 0 0">${money(tot0)} en ${prevN.toLowerCase()} → ${money(tot1)} en ${mesN.toLowerCase()}.</p>`;
+    /* ingresos y ahorro: alcanza con el total. En sobrante sí vale saber por qué cambió */
+    if(sel==="sobrante"&&filas.length) h+=`<div class="eyebrow" style="margin-top:12px">Por qué cambió</div><div class="cblist">${filas.map(fila).join("")}</div>`;
     return h+`</section>`;
   },
 
@@ -3201,6 +3204,7 @@ const App={
     v.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null));
     v.querySelectorAll("[data-fmov]").forEach(b=>b.onclick=()=>{this.filtroMov=b.dataset.fmov;this.render();});
     v.querySelectorAll("[data-vegr]").forEach(b=>b.onclick=()=>{this.vistaEgr=b.dataset.vegr;this.render();});
+    v.querySelectorAll("[data-fcat]").forEach(b=>b.onclick=()=>{this.filtroCat=b.dataset.fcat;this.render();});
     v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>this.formPresupuestos("gastos"));
     v.querySelectorAll("[data-iresp]").forEach(b=>b.onclick=()=>this.formPresupuestos("ingresos"));
     const bc=$("#btnCats"); if(bc) bc.onclick=()=>this.gestionCategorias();
@@ -3215,7 +3219,6 @@ const App={
       const e=b.closest("details").querySelector("summary .eyebrow");
       if(e) e.textContent=b.dataset.tema==="oscuro"?"oscura":"clara";
     });
-    v.querySelectorAll("[data-cbcat]").forEach(b=>b.onclick=()=>{ const k="cb:"+b.dataset.cbcat; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-bar]").forEach(b=>b.onclick=()=>this.mostrarBarra(b));
 
     const sw=$("#swArrastre"); if(sw) sw.onchange=()=>{store.config.arrastre=sw.checked;store.guardarConfig();
