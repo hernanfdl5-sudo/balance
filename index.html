@@ -505,7 +505,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261009-194303 -->
+<!-- build 20261009-195200 -->
 
 <div id="shell">
   <header id="topbar">
@@ -575,7 +575,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261009-194303";
+const BUILD="20261009-195200";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -1548,7 +1548,7 @@ const App={
     };
     ICON.historial='<path d="M4 18l5-6 4 3 7-9M4 20h16"/>';
     /* Ajustes no va en la barra: se abre con la personita de arriba a la derecha */
-    const L={cargar:"Cargar",resumen:"Resumen",ahorro:"Ahorro",historial:"Mes a mes"};
+    const L={cargar:"Cargar",resumen:"Resumen",historial:"Mes a mes",ahorro:"Ahorro"};
     $("#tabs").innerHTML=Object.keys(L).map(k=>
       `<button class="t" role="tab" data-tab="${k}" aria-selected="${k===this.tab}">
         <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg></span>${L[k]}</button>`).join("");
@@ -2056,9 +2056,8 @@ const App={
       <div class="big num">${money(Math.abs(final))}</div>
       ${modo==="real"&&!sinSueldo?(()=>{ const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=Math.max(ingEsp-calc.ingresosReales(key),0);
         return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>`; })():""}
-      ${mano&&!notaSob?"":`<div class="sub">${proy
+      ${mano?"":`<div class="sub">${proy
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes, lo que ya te pasaste y lo ahorrado${sob>0?", con el sobrante anterior":""}`)
-        : mano ? `Incluye${notaSob.replace(" · incluye","")}`
         : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>`}
       ${!mano&&sinSueldo?`<div class="banner" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
         <span>Falta cargar cuánto es tu sueldo de ${mesN}. Mientras tanto uso lo que retiraste.</span>
@@ -2327,8 +2326,39 @@ const App={
             <span class="num" style="color:var(--warn-ink)">${moneyShort(a)}${de(a)}</span><span class="num ${r>=0?"gain":"loss"}">${(r<0?"−":"")+moneyShort(Math.abs(r))}</span></div>`; }).join("")
         + `</div><p class="hint" style="margin:10px 0 0">El porcentaje es la parte de los ingresos que fue a gastos y a ahorro. Montos abreviados (k = mil, M = millón).</p></section>`;
     }
+    if(sel==="gastos") h+=this.vsProyectado(key);
     h+=this.bloqueCambios(key,sel,SER[sel]);
     return h;
+  },
+
+  /* este mes contra lo proyectado: en qué subcategorías cerradas (o todas si el mes ya pasó)
+     se gastó más o menos que el tope. Misma lectura que Cambios, pero contra el tope propio */
+  vsProyectado(key){
+    const terminado=key<mesKey(new Date()), mesN=MESES[Number(key.split("-")[1])-1];
+    const filas=[];
+    for(const c of Object.values(calc.porCategoria(key))){
+      if(c.virtual) continue;
+      if(c.porSubs){
+        for(const x of c.lista){
+          if(x.tope>0&&(terminado||x.cerrada)&&Math.abs(x.monto-x.tope)>=1) filas.push({n:x.nombre,cat:c.cat.nombre,v0:x.tope,v1:x.monto,d:x.monto-x.tope});
+        }
+      }else if(c.presup>0&&(terminado||c.cerrada)&&Math.abs(c.gastado-c.presup)>=1) filas.push({n:c.cat.nombre,cat:"",v0:c.presup,v1:c.gastado,d:c.gastado-c.presup});
+    }
+    if(!filas.length) return "";
+    filas.sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+    const cls=d=>d>0?"loss":"gain", flecha=d=>d>0?"▲":"▼";
+    const fila=x=>`<div class="cbrow"><span class="cbn"><b>${esc(x.n)}${x.cat?` <small>${esc(x.cat)}</small>`:""}</b><small class="num">tope ${money(x.v0)} → ${money(x.v1)}</small></span>
+        <span class="cbd num ${cls(x.d)}">${flecha(x.d)} ${money(Math.abs(x.d))}<small> (${pctSigno(x.d/x.v0*100)})</small></span></div>`;
+    const mas=filas.filter(x=>x.d>0), menos=filas.filter(x=>x.d<0), suma=l=>l.reduce((s,x)=>s+Math.abs(x.d),0);
+    const chev=`<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>`;
+    const grupo=(k,c,titulo,fl,l,sep)=>{ const ab=!!this.abiertas["vp:"+k];
+      return `<button type="button" class="cbgrupo ${c} ${ab?"open":""}" data-cbgrupo="vp-${k}" aria-expanded="${ab}" ${sep?'style="margin-top:14px"':""}>
+        <span>${titulo}<small>${l.length}</small></span><b class="num">${fl} ${money(suma(l))}${chev}</b></button>
+        ${ab?`<div class="cblist">${l.map(fila).join("")}</div>`:""}`; };
+    let h=`<section class="card"><div class="sechead"><h2 class="sec">Contra lo proyectado</h2><span class="eyebrow">${mesN}</span></div>`;
+    if(mas.length) h+=grupo("mas","loss","Exceso de gasto","▲",mas,false);
+    if(menos.length) h+=grupo("menos","gain","Gastaste menos","▼",menos,mas.length>0);
+    return h+(terminado?"":`<p class="hint" style="margin-top:10px">Sólo lo que ya cerraste este mes; lo abierto todavía puede cambiar.</p>`)+`</section>`;
   },
 
   /* cambios de gastos: sólo categorías terminadas (cerradas, o todas si el mes ya pasó).
@@ -3211,7 +3241,7 @@ const App={
     v.querySelectorAll("[data-fmov]").forEach(b=>b.onclick=()=>{this.filtroMov=b.dataset.fmov;this.render();});
     v.querySelectorAll("[data-vegr]").forEach(b=>b.onclick=()=>{this.vistaEgr=b.dataset.vegr;this.render();});
     v.querySelectorAll("[data-fcat]").forEach(b=>b.onclick=()=>{this.filtroCat=b.dataset.fcat;this.render();});
-    v.querySelectorAll("[data-cbgrupo]").forEach(b=>b.onclick=()=>{ const k="cbg:"+b.dataset.cbgrupo; this.abiertas[k]=!this.abiertas[k]; this.render(); });
+    v.querySelectorAll("[data-cbgrupo]").forEach(b=>b.onclick=()=>{ const g=b.dataset.cbgrupo, k=g.startsWith("vp-")?"vp:"+g.slice(3):"cbg:"+g; this.abiertas[k]=!this.abiertas[k]; this.render(); });
     v.querySelectorAll("[data-irpresup]").forEach(b=>b.onclick=()=>this.formPresupuestos("gastos"));
     v.querySelectorAll("[data-iresp]").forEach(b=>b.onclick=()=>this.formPresupuestos("ingresos"));
     const bc=$("#btnCats"); if(bc) bc.onclick=()=>this.gestionCategorias();
