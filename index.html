@@ -519,7 +519,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261010-200128 -->
+<!-- build 20261010-201233 -->
 
 <div id="shell">
   <header id="topbar">
@@ -589,7 +589,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261010-200128";
+const BUILD="20261010-201233";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -644,6 +644,9 @@ const SINONIMOS={
 };
 
 const FUENTES_DEF=["Sueldo","Ganancias"];
+/* "Otros": una devolución, una changa… plata que no es del sueldo y no debe mezclarse con él */
+const FUENTE_OTROS="Otros";
+function fuentesParaElegir(){ const f=[...store.config.fuentes]; if(!f.includes(FUENTE_OTROS)) f.push(FUENTE_OTROS); return f; }
 const INSTR_DEF=["Plazo fijo","Dólares","Cripto","Acciones / CEDEARs","Fondo común","Efectivo guardado","Otro"];
 
 function diccionarioBase(cats){
@@ -1416,7 +1419,8 @@ function interpretar(frase){
       if(!item.concepto) item.concepto="Sin detalle";
     }else if(tipo==="ing"){
       const esRetiro=RET_RE.test(p.regionTxt)||(pend.length===1&&RET_RE.test(plano));
-      item.fuente=buscarFuente(p.regionTxt)||(pend.length===1?buscarFuente(plano):null)||store.config.fuentes[0]||"Sueldo";
+      /* sin fuente reconocida: un retiro va al sueldo; cualquier otra plata que entra va a Otros */
+      item.fuente=buscarFuente(p.regionTxt)||(pend.length===1?buscarFuente(plano):null)||(esRetiro?(store.config.fuentes[0]||"Sueldo"):FUENTE_OTROS);
       if(esRetiro&&(!item.concepto||/^(sueldo|plata|mi sueldo)$/.test(norm(item.concepto)))) item.concepto="Retiro del sueldo";
       if(!item.concepto) item.concepto=item.fuente;
     }else{
@@ -1995,7 +1999,7 @@ const App={
     const cats=store.config.cats.map(c=>`<option value="${c.id}" ${c.id===d.cat?"selected":""}>${esc(c.nombre)}</option>`).join("");
     const cat=store.cat(d.cat);
     const subs=(cat&&cat.subs||[]).map(s=>`<option value="${esc(s)}"></option>`).join("");
-    const fuentes=store.config.fuentes.map(f=>`<option value="${esc(f)}" ${f===d.fuente?"selected":""}>${esc(f)}</option>`).join("");
+    const fuentes=fuentesParaElegir().map(f=>`<option value="${esc(f)}" ${f===d.fuente?"selected":""}>${esc(f)}</option>`).join("");
     const instr=store.config.instrumentos.map(n=>`<option value="${esc(n)}" ${n===d.instrumento?"selected":""}>${esc(n)}</option>`).join("");
     /* un retiro del sueldo se guarda como ingreso de la fuente Sueldo, pero acá se muestra como lo que es */
     const esRetiro=d.tipo==="ing"&&d.concepto==="Retiro del sueldo";
@@ -2100,10 +2104,14 @@ const App={
       </div>
       <div class="lbl">${lbl}</div>
       <div class="big num">${money(Math.abs(final))}</div>
-      ${modo==="real"&&!sinSueldo?(()=>{ const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=calc.sinRetirar(key);
-        return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>`; })():""}
-      ${mano?(()=>{ const pm=calc.porMedio(key); if(!pm.usaMp) return "";
-        return `<div class="desglose"><span><b class="num ${pm.efectivo.saldo<0?"loss":""}">${money(pm.efectivo.saldo)}</b> en efectivo</span><span class="sep">+</span><span><b class="num ${pm.mp.saldo<0?"loss":""}">${money(pm.mp.saldo)}</b> en Mercado Pago</span></div>`; })():""}
+      ${(()=>{ if(proy||(modo==="real"&&sinSueldo)) return "";
+        /* la plata en mano, siempre partida: lo que tenés en efectivo y lo que tenés en Mercado Pago */
+        const pm=calc.porMedio(key);
+        const partes=`<span>Efectivo <b class="num ${pm.efectivo.saldo<0?"loss":""}">${money(pm.efectivo.saldo)}</b></span><span class="sep">·</span><span>MP <b class="num ${pm.mp.saldo<0?"loss":""}">${money(pm.mp.saldo)}</b></span>`;
+        if(mano) return `<div class="desglose">${partes}</div>`;
+        const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=calc.sinRetirar(key);
+        return `<div class="desglose"><span>En mano <b class="num ${enMano<0?"loss":""}">${money(enMano)}</b></span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>
+          <div class="desglose" style="margin-top:-2px">${partes}</div>`; })()}
       ${mano?"":`<div class="sub">${proy
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes, lo que ya te pasaste y lo ahorrado${sob>0?", con el sobrante anterior":""}`)
         : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>`}
@@ -3621,11 +3629,11 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
     if(id&&!it) return this.toast("Ese movimiento ya no existe.");
     const nuevo=!it;
     const d=it||{monto:0,fecha:(hoyISO().startsWith(this.mes)?hoyISO():this.mes+"-01"),concepto:"",
-      cat:(store.config.cats[0]||{}).id,fuente:store.config.fuentes[0]||"",instrumento:"",...(pre||{})};
+      cat:(store.config.cats[0]||{}).id,fuente:FUENTE_OTROS,instrumento:"",...(pre||{})};
     const t=tipo==="gasto"?"gasto":tipo==="ing"?"ingreso":"ahorro";
 
     const cats=store.config.cats.map(c=>`<option value="${c.id}" ${c.id===d.cat?"selected":""}>${esc(c.nombre)}</option>`).join("");
-    const fuentes=store.config.fuentes.map(f=>`<option value="${esc(f)}" ${f===d.fuente?"selected":""}>${esc(f)}</option>`).join("");
+    const fuentes=fuentesParaElegir().map(f=>`<option value="${esc(f)}" ${f===d.fuente?"selected":""}>${esc(f)}</option>`).join("");
     const instr=store.config.instrumentos.map(n=>`<option value="${esc(n)}" ${n===d.instrumento?"selected":""}>${esc(n)}</option>`).join("");
     const subsDe=cid=>((store.cat(cid)||{}).subs||[]).map(s=>`<option value="${esc(s)}"></option>`).join("");
 
