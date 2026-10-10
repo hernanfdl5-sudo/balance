@@ -519,7 +519,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261010-195436 -->
+<!-- build 20261010-200128 -->
 
 <div id="shell">
   <header id="topbar">
@@ -589,7 +589,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261010-195436";
+const BUILD="20261010-200128";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -1997,8 +1997,10 @@ const App={
     const subs=(cat&&cat.subs||[]).map(s=>`<option value="${esc(s)}"></option>`).join("");
     const fuentes=store.config.fuentes.map(f=>`<option value="${esc(f)}" ${f===d.fuente?"selected":""}>${esc(f)}</option>`).join("");
     const instr=store.config.instrumentos.map(n=>`<option value="${esc(n)}" ${n===d.instrumento?"selected":""}>${esc(n)}</option>`).join("");
-    const tipos=[["gasto","Gasto"],["ing","Ingreso"],["inv","Ahorro"]]
-      .map(([v,l])=>`<option value="${v}" ${v===d.tipo?"selected":""}>${l}</option>`).join("");
+    /* un retiro del sueldo se guarda como ingreso de la fuente Sueldo, pero acá se muestra como lo que es */
+    const esRetiro=d.tipo==="ing"&&d.concepto==="Retiro del sueldo";
+    const tipos=[["gasto","Gasto"],["retiro","Retiro de sueldo"],["ing","Ingreso"],["inv","Ahorro"]]
+      .map(([v,l])=>`<option value="${v}" ${(esRetiro?v==="retiro":v===d.tipo)?"selected":""}>${l}</option>`).join("");
 
     return `<div class="draft ${d.dudoso?"warnrow":""}" data-i="${i}">
       <div class="l1">
@@ -2019,6 +2021,7 @@ const App={
         <span>${d.tipo==="ing"?"¿Dónde quedó?":"¿De dónde sale?"}</span>
         <div class="segs mini" role="tablist">${Object.keys(MEDIOS).map(k=>`<button type="button" role="tab" data-medio="${k}" aria-selected="${(d.medio||"efectivo")===k}">${MEDIOS[k]}</button>`).join("")}</div>
       </div>
+      ${esRetiro?`<p class="hint" style="margin:-2px 0 0">Se descuenta de lo que te falta retirar del sueldo; no suma como ingreso extra.</p>`:""}
       ${d.tipo==="gasto"?`<label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--ink-2);font-weight:500">
         <input type="checkbox" data-f="recordar" ${d.recordar?"checked":""} style="width:auto;margin:0">
         Recordar que “${esc(d.concepto||"esto")}” va en ${esc(cat?cat.nombre:"")}</label>`:""}
@@ -3218,7 +3221,8 @@ const App={
           const d=this.borradores[i]; if(!d) return;
           if(f==="monto"){ d.monto=this.leerMonto(inp.value); inp.value=money(d.monto); }
           else if(f==="recordar"){ d.recordar=inp.checked; return; }
-          else { d[f]=inp.value; if(f==="cat") d.dudoso=false; }
+          else if(f==="tipo"&&inp.value==="retiro"){ d.tipo="ing"; d.fuente=store.config.fuentes[0]||"Sueldo"; d.concepto="Retiro del sueldo"; }
+          else { if(f==="tipo"&&d.concepto==="Retiro del sueldo") d.concepto=""; d[f]=inp.value; if(f==="cat") d.dudoso=false; }
           if(f==="tipo"){
             /* al cambiar de tipo, que no quede sin categoría / fuente / destino */
             if(d.tipo==="gasto"&&!store.cat(d.cat)){ const dd=buscarDestino(d.concepto); d.cat=dd.cat||store.config.cats[0].id; }
