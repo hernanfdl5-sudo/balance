@@ -519,7 +519,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261010-201233 -->
+<!-- build 20261010-201527 -->
 
 <div id="shell">
   <header id="topbar">
@@ -589,7 +589,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261010-201233";
+const BUILD="20261010-201527";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -2109,9 +2109,9 @@ const App={
         const pm=calc.porMedio(key);
         const partes=`<span>Efectivo <b class="num ${pm.efectivo.saldo<0?"loss":""}">${money(pm.efectivo.saldo)}</b></span><span class="sep">·</span><span>MP <b class="num ${pm.mp.saldo<0?"loss":""}">${money(pm.mp.saldo)}</b></span>`;
         if(mano) return `<div class="desglose">${partes}</div>`;
+        /* en Real, el desglose de siempre: en mano + sin retirar (la partición efectivo/MP va sólo en En mano) */
         const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=calc.sinRetirar(key);
-        return `<div class="desglose"><span>En mano <b class="num ${enMano<0?"loss":""}">${money(enMano)}</b></span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>
-          <div class="desglose" style="margin-top:-2px">${partes}</div>`; })()}
+        return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>`; })()}
       ${mano?"":`<div class="sub">${proy
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes, lo que ya te pasaste y lo ahorrado${sob>0?", con el sobrante anterior":""}`)
         : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>`}
