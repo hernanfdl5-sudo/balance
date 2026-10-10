@@ -295,6 +295,12 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
 .draft.warnrow{border-color:var(--warn);background:var(--warn-soft)}
 .draft .l1{display:flex;gap:8px;align-items:center}
 .draft .l1 input[type=text]{flex:1}
+.draft .row select{flex:1;min-width:0}
+/* de dónde sale la plata: pregunta visible antes de guardar */
+.draft .medio{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-2);font-weight:500}
+.draft .medio>span{flex:none}
+.draft .medio .segs{flex:1}
+.draft .medio .segs button{padding:6px 4px;font-size:12px}
 .draft .del{width:34px;height:34px;flex:none;border-radius:10px;background:var(--surface-3);color:var(--ink-3);display:grid;place-items:center;font-size:17px}
 .draft .del:hover{background:var(--crit-soft);color:var(--crit-ink)}
 
@@ -513,7 +519,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261010-162647 -->
+<!-- build 20261010-195436 -->
 
 <div id="shell">
   <header id="topbar">
@@ -583,7 +589,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261010-162647";
+const BUILD="20261010-195436";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -809,7 +815,25 @@ const calc={
   ingresos(k){ const s=this.sobrante(k); return this.ingresosReales(k)+(s>0?s:0); },
   /* el ingreso del mes entero: el sueldo esperado (si está cargado) más el sobrante anterior.
      Es lo que usan Real, Proyectado, el cierre del mes y Mes a mes. */
-  ingresoMes(k){ const s=this.sobrante(k), e=this.ingEsperado(k); return (e>0?e:this.ingresosReales(k))+(s>0?s:0); },
+  /* fuente por fuente: lo esperado si está cargado (o lo cobrado, si fue más), y las fuentes sin
+     esperado (una plata que te devolvieron, una changa) suman lo que entró. */
+  ingresoMes(k){ return this.ingEstimado(k); },
+  /* lo que falta retirar del sueldo: por fuente, lo esperado menos lo cobrado */
+  sinRetirar(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?0:Math.max(f.esperado-f.monto,0)),0); },
+  /* dónde está la plata: en efectivo o en Mercado Pago. Los movimientos sin medio son efectivo;
+     el sobrante del mes anterior también. */
+  porMedio(k){
+    const m=store.mes(k), r={efectivo:{ing:0,gas:0,inv:0},mp:{ing:0,gas:0,inv:0}};
+    if(m){
+      for(const g of m.ingresos) r[g.medio==="mp"?"mp":"efectivo"].ing+=Number(g.monto)||0;
+      for(const g of m.gastos) r[g.medio==="mp"?"mp":"efectivo"].gas+=Number(g.monto)||0;
+      for(const g of m.inversiones) r[g.medio==="mp"?"mp":"efectivo"].inv+=Number(g.monto)||0;
+    }
+    const s=this.sobrante(k); if(s>0) r.efectivo.ing+=s;
+    r.usaMp=r.mp.ing>0||r.mp.gas>0||r.mp.inv>0;
+    r.efectivo.saldo=r.efectivo.ing-r.efectivo.gas-r.efectivo.inv; r.mp.saldo=r.mp.ing-r.mp.gas-r.mp.inv;
+    return r;
+  },
   FUENTE_SOBRANTE:"Sobrante del mes anterior",
   invertido(k){const m=store.mes(k);return m?m.inversiones.reduce((s,g)=>s+(Number(g.monto)||0),0):0;},
   /* tope de una subcategoría */
@@ -1199,7 +1223,7 @@ const UNIDADES={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,sie
 const MULT={mil:1000,miles:1000,luca:1000,lucas:1000,lucaso:1000,k:1000,gamba:100,gambas:100,palo:1e6,palos:1e6,
   millon:1e6,millones:1e6,melon:1e6,melones:1e6,palito:1e6,palitos:1e6,kilo:1000,kilos:1000};
 
-const STOP=new Set(["de","en","para","por","del","la","el","los","las","un","una","unos","unas","al","gaste",
+const STOP=new Set(["de","en","para","por","del","la","el","los","las","un","una","unos","unas","al","gaste","devolvio","devolvieron","debia","debian","transfirio","transfirieron",
   "gastamos","gasto","pague","pagamos","compre","compramos","puse","me","se","fue","fui","que","y","con","sobre",
   "a","lo","le","mi","tipo","como","tambien","ademas","pesos","peso","mangos","guita","plata","total","aprox",
   "aproximadamente","mas","o","menos","salio","costo","valio","hoy","ayer","este","esta","cobre","cobramos",
@@ -1212,7 +1236,11 @@ const VERBOS_ARRANQUE=new Set(["gaste","gastamos","pague","pagamos","compre","co
 
 /* retirar plata del sueldo es cobrar una parte: entra como ingreso de la primera fuente */
 const RET_RE=/\b(retire|retiramos|retiro|agarre|agarramos|saque del sueldo|saque de mi sueldo|tome del sueldo|adelanto)\b/;
-const ING_RE=/\b(retire|retiramos|retiro|agarre|agarramos|adelanto|cobre|cobramos|ingreso|ingresaron|sueldo|aguinaldo|ganancias|ganancia|me pagaron|pagaron|entro|entraron|factura|honorarios|vendi|vendimos|deposito|depositaron|bono|freelance|changa)\b/;
+/* dónde está la plata: si la frase nombra Mercado Pago (o una transferencia), el movimiento va por ahí */
+const MP_RE=/\b(mercado ?pago|mercadopago|mp|transferencia|transferi|transfirieron|transfirio|billetera|por cuenta|en cuenta|cuenta dni|uala|brubank|banco)\b/;
+const MP_PALABRA=/^(mercado|pago|mercadopago|mp|transferencia|transferi|transfirieron|transfirio|billetera|cuenta|dni|uala|brubank|banco)$/;
+const MEDIOS={efectivo:"Efectivo",mp:"Mercado Pago"};
+const ING_RE=/\b(retire|retiramos|retiro|agarre|agarramos|adelanto|cobre|cobramos|ingreso|ingresaron|sueldo|aguinaldo|ganancias|ganancia|me pagaron|pagaron|me pago|entro|entraron|factura|honorarios|vendi|vendimos|deposito|depositaron|bono|freelance|changa|transfirio|transfirieron|devolvio|devolvieron|me debia|me debian)\b/;
 const INV_RE=/\b(ahorre|ahorramos|inverti|inversion|guarde|plazo fijo|compre dolares|compre dolar|dolares|usd|cripto|bitcoin|usdt|cedear|cedears|acciones|fci|fondo comun|mep)\b/;
 
 function parseMonedaAR(txt){
@@ -1376,7 +1404,10 @@ function interpretar(frase){
   const algunoMarcado=pend.length>1&&pend.some(p=>p.marca);
   for(const p of pend){
     const tipo=p.marca||(algunoMarcado?"gasto":tipoGlobal);
-    const item={id:uid(),tipo,monto:p.monto,concepto:titulizar(p.concepto),cat:null,fuente:null,instrumento:null,
+    /* "me transfirió 20 lucas por mercado pago" → el medio es MP y esas palabras no van al detalle */
+    const medio=MP_RE.test(norm(p.regionTxt))||(pend.length===1&&MP_RE.test(norm(plano)))?"mp":"efectivo";
+    if(medio==="mp") p.concepto=p.concepto.split(" ").filter(t=>!MP_PALABRA.test(norm(t))).join(" ").trim();
+    const item={id:uid(),tipo,monto:p.monto,concepto:titulizar(p.concepto),cat:null,fuente:null,instrumento:null,medio,
       dudoso:false,recordar:false};
     if(tipo==="gasto"){
       const d=buscarDestino(p.concepto);
@@ -1984,6 +2015,10 @@ const App={
           :d.tipo==="ing"?`<select data-f="fuente" aria-label="Fuente">${fuentes}</select>`
           :`<select data-f="instrumento" aria-label="Instrumento">${instr}</select>`}
       </div>
+      <div class="medio">
+        <span>${d.tipo==="ing"?"¿Dónde quedó?":"¿De dónde sale?"}</span>
+        <div class="segs mini" role="tablist">${Object.keys(MEDIOS).map(k=>`<button type="button" role="tab" data-medio="${k}" aria-selected="${(d.medio||"efectivo")===k}">${MEDIOS[k]}</button>`).join("")}</div>
+      </div>
       ${d.tipo==="gasto"?`<label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--ink-2);font-weight:500">
         <input type="checkbox" data-f="recordar" ${d.recordar?"checked":""} style="width:auto;margin:0">
         Recordar que “${esc(d.concepto||"esto")}” va en ${esc(cat?cat.nombre:"")}</label>`:""}
@@ -2023,7 +2058,7 @@ const App={
         const color=mv._t==="gasto"?(c?colorDe(c.color):"var(--c12)"):mv._t==="ing"?"var(--good)":"var(--brand)";
         const sub=mv._t==="gasto"?(c?c.nombre:"Sin categoría")
           :mv._t==="ing"?("Ingreso · "+(mv.fuente||"Sin fuente")):("Ahorro · "+(mv.instrumento||"Sin destino"));
-        const chips=(mv.fijo?`<span class="chip">fijo</span>`:"")+(mv.cuotaId?`<span class="chip">cuota ${mv.cuotaN}/${mv.cuotaTot}</span>`:"");
+        const chips=(mv.fijo?`<span class="chip">fijo</span>`:"")+(mv.cuotaId?`<span class="chip">cuota ${mv.cuotaN}/${mv.cuotaTot}</span>`:"")+(mv.medio==="mp"?`<span class="chip">MP</span>`:"");
         return `<button type="button" class="mov" data-edit="${mv._t}:${mv.id}">
           <span class="bar" style="background:${color}"></span>
           <span class="txt"><b>${esc(mv.concepto||"—")}${chips}</b><span>${esc(sub)} · ${esc(fechaCorta(mv.fecha))}</span></span>
@@ -2062,8 +2097,10 @@ const App={
       </div>
       <div class="lbl">${lbl}</div>
       <div class="big num">${money(Math.abs(final))}</div>
-      ${modo==="real"&&!sinSueldo?(()=>{ const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=Math.max(ingEsp-calc.ingresosReales(key),0);
+      ${modo==="real"&&!sinSueldo?(()=>{ const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=calc.sinRetirar(key);
         return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>`; })():""}
+      ${mano?(()=>{ const pm=calc.porMedio(key); if(!pm.usaMp) return "";
+        return `<div class="desglose"><span><b class="num ${pm.efectivo.saldo<0?"loss":""}">${money(pm.efectivo.saldo)}</b> en efectivo</span><span class="sep">+</span><span><b class="num ${pm.mp.saldo<0?"loss":""}">${money(pm.mp.saldo)}</b> en Mercado Pago</span></div>`; })():""}
       ${mano?"":`<div class="sub">${proy
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes, lo que ya te pasaste y lo ahorrado${sob>0?", con el sobrante anterior":""}`)
         : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>`}
@@ -3193,6 +3230,10 @@ const App={
       });
       const del=el.querySelector("[data-del]");
       if(del) del.onclick=()=>{this.borradores.splice(i,1);this.render();};
+      el.querySelectorAll("[data-medio]").forEach(b=>b.onclick=()=>{
+        const d=this.borradores[i]; if(!d) return; d.medio=b.dataset.medio;
+        el.querySelectorAll("[data-medio]").forEach(x=>x.setAttribute("aria-selected",String(x===b)));
+      });
     });
     const sd=$("#saveDraft"); if(sd) sd.onclick=()=>this.guardarBorradores();
     const cd=$("#cancelDraft"); if(cd) cd.onclick=()=>{this.borradores=[];this.ultimoTexto="";this.render();};
@@ -3524,9 +3565,11 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
     let n=0, aprendidas=0;
     for(const d of this.borradores){
       if(!(d.monto>0)) continue;
+      /* el medio se guarda sólo cuando es Mercado Pago; sin medio = efectivo */
+      const med=d.medio==="mp"?{medio:"mp"}:{};
       if(d.tipo==="gasto"){
         const cat=store.cat(d.cat)?d.cat:store.config.cats[0].id;
-        m.gastos.push({id:uid(),fecha,monto:d.monto,cat,concepto:d.concepto||"Sin detalle"});
+        m.gastos.push({id:uid(),fecha,monto:d.monto,cat,concepto:d.concepto||"Sin detalle",...med});
         if(d.recordar&&d.concepto){
           const k=norm(d.concepto);
           if(k&&store.config.dicc[k]!==cat){
@@ -3536,9 +3579,9 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
         }
       }else if(d.tipo==="ing"){
         m.ingresos.push({id:uid(),fecha,monto:d.monto,fuente:d.fuente||store.config.fuentes[0]||"Sueldo",
-          concepto:d.concepto||d.fuente||"Ingreso"});
+          concepto:d.concepto||d.fuente||"Ingreso",...med});
       }else{
-        const mov={id:uid(),fecha,monto:d.monto,instrumento:d.instrumento||"Otro",concepto:d.concepto||""};
+        const mov={id:uid(),fecha,monto:d.monto,instrumento:d.instrumento||"Otro",concepto:d.concepto||"",...med};
         m.inversiones.push(mov); this.opDesdeMovimiento(mov); aprendidas+=0; this._tocoCartera=true;
       }
       n++;
@@ -3593,6 +3636,7 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
         <datalist id="fSubs">${tipo==="gasto"?subsDe(d.cat):""}</datalist></label>
       ${tipo==="ing"?`<label class="f" for="fFuente">Fuente<select id="fFuente">${fuentes}</select></label>`:""}
       ${tipo==="inv"?`<label class="f" for="fInstr">Dónde lo pusiste<select id="fInstr">${instr}</select></label>`:""}
+      <label class="f" for="fMedio">${tipo==="ing"?"Dónde quedó la plata":"De dónde salió la plata"}<select id="fMedio">${Object.keys(MEDIOS).map(k=>`<option value="${k}" ${(d.medio||"efectivo")===k?"selected":""}>${MEDIOS[k]}</option>`).join("")}</select></label>
       <label class="f" for="fFecha">Fecha<input type="date" id="fFecha" value="${esc(d.fecha||"")}"></label>
       ${(it&&it.fijo)?`<div class="banner">Este gasto viene de tus gastos fijos. Podés cambiarle el monto sólo para este mes.</div>`:""}
       ${(it&&it.cuotaId)?`<div class="banner">Cuota ${it.cuotaN} de ${it.cuotaTot}. Borrarla acá sólo la saca de este mes.</div>`:""}`;
@@ -3607,6 +3651,7 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
       if(tipo==="gasto"){ obj.cat=$("#fCat",b).value; if(!obj.concepto) obj.concepto="Sin detalle"; }
       if(tipo==="ing"){ obj.fuente=$("#fFuente",b).value; if(!obj.concepto) obj.concepto=obj.fuente; }
       if(tipo==="inv") obj.instrumento=$("#fInstr",b).value;
+      if($("#fMedio",b).value==="mp") obj.medio="mp";
 
       const destino=String(obj.fecha).slice(0,7);
       const f=buscar();
