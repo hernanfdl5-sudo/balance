@@ -268,7 +268,8 @@ h2.sec{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:23
 .btn:disabled{opacity:.45;cursor:default}
 .row{display:flex;gap:8px}
 .row>*{flex:1}
-label.f{display:flex;flex-direction:column;gap:5px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
+label.f,div.f{display:flex;flex-direction:column;gap:5px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
+div.f .segs button{text-transform:none;letter-spacing:0}
 input[type=text],input[type=number],input[type=date],select,textarea{
   width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);
   font-size:15px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink)}
@@ -519,7 +520,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261010-201913 -->
+<!-- build 20261012-114622 -->
 
 <div id="shell">
   <header id="topbar">
@@ -589,7 +590,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261010-201913";
+const BUILD="20261012-114622";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -665,7 +666,7 @@ const CONFIG_DEF=()=>({
 });
 /* presupuestos: tope por categoría (para las que no tienen subcategorías)
    presupuestosSub: tope por subcategoría — su suma es el tope de la categoría */
-const MES_DEF=()=>({gastos:[],ingresos:[],inversiones:[],presupuestos:{},presupuestosSub:{},presupuestosIng:{},
+const MES_DEF=()=>({gastos:[],ingresos:[],inversiones:[],traspasos:[],presupuestos:{},presupuestosSub:{},presupuestosIng:{},
   creado:new Date().toISOString()});
 
 /* ============================ almacenamiento ============================ */
@@ -826,15 +827,17 @@ const calc={
   /* dónde está la plata: en efectivo o en Mercado Pago. Los movimientos sin medio son efectivo;
      el sobrante del mes anterior también. */
   porMedio(k){
-    const m=store.mes(k), r={efectivo:{ing:0,gas:0,inv:0},mp:{ing:0,gas:0,inv:0}};
+    const m=store.mes(k), r={efectivo:{ing:0,gas:0,inv:0,tras:0},mp:{ing:0,gas:0,inv:0,tras:0}};
     if(m){
       for(const g of m.ingresos) r[g.medio==="mp"?"mp":"efectivo"].ing+=Number(g.monto)||0;
       for(const g of m.gastos) r[g.medio==="mp"?"mp":"efectivo"].gas+=Number(g.monto)||0;
       for(const g of m.inversiones) r[g.medio==="mp"?"mp":"efectivo"].inv+=Number(g.monto)||0;
+      /* traspasos: plata que cambia de lado sin ser gasto ni ingreso */
+      for(const t of (m.traspasos||[])){ const v=Number(t.monto)||0; if(t.a==="mp"){ r.mp.tras+=v; r.efectivo.tras-=v; } else { r.efectivo.tras+=v; r.mp.tras-=v; } }
     }
     const s=this.sobrante(k); if(s>0) r.efectivo.ing+=s;
-    r.usaMp=r.mp.ing>0||r.mp.gas>0||r.mp.inv>0;
-    r.efectivo.saldo=r.efectivo.ing-r.efectivo.gas-r.efectivo.inv; r.mp.saldo=r.mp.ing-r.mp.gas-r.mp.inv;
+    r.usaMp=r.mp.ing>0||r.mp.gas>0||r.mp.inv>0||r.mp.tras!==0;
+    r.efectivo.saldo=r.efectivo.ing-r.efectivo.gas-r.efectivo.inv+r.efectivo.tras; r.mp.saldo=r.mp.ing-r.mp.gas-r.mp.inv+r.mp.tras;
     return r;
   },
   FUENTE_SOBRANTE:"Sobrante del mes anterior",
@@ -1771,6 +1774,7 @@ const App={
         <button type="button" data-nuevo="gasto">+ Gasto</button>
         <button type="button" data-nuevo="ing" data-retiro="1">+ Retiro de sueldo</button>
         <button type="button" data-nuevo="ing">+ Ingreso</button>
+        <button type="button" data-traspaso="1">⇄ Mover plata</button>
       </div>
       <div class="composer">
         <textarea id="txtEntrada" rows="1" placeholder="50 lucas de carne, 20 de súper…" aria-label="Gasto a cargar"></textarea>
@@ -1780,6 +1784,7 @@ const App={
     bar.dataset.listo="1";
     bar.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null,
       b.dataset.retiro?{fuente:store.config.fuentes[0]||"Sueldo",concepto:"Retiro del sueldo"}:null));
+    const tr=bar.querySelector("[data-traspaso]"); if(tr) tr.onclick=()=>this.editarTraspaso(null);
     const ta=$("#txtEntrada"), send=$("#sendBtn"), mic=$("#micBtn");
     const sync=()=>{
       const hay=ta.value.trim().length>0;
@@ -2037,13 +2042,15 @@ const App={
       m.gastos.forEach(g=>todos.push({...g,_t:"gasto"}));
       m.ingresos.forEach(g=>todos.push({...g,_t:"ing"}));
       m.inversiones.forEach(g=>todos.push({...g,_t:"inv"}));
+      (m.traspasos||[]).forEach(g=>todos.push({...g,_t:"tras"}));
     }
     todos.sort((a,b)=>String(b.fecha||"").localeCompare(String(a.fecha||""))||String(b.id).localeCompare(String(a.id)));
 
     const f=this.filtroMov||"todos";
     const movs=f==="todos"?todos:todos.filter(x=>x._t===f);
     const cuenta=t=>todos.filter(x=>x._t===t).length;
-    const total=movs.reduce((s,x)=>s+(Number(x.monto)||0),0);
+    /* los traspasos no son plata que entra ni que sale: no suman al total */
+    const total=movs.filter(x=>x._t!=="tras").reduce((s,x)=>s+(Number(x.monto)||0),0);
     const nombreF={todos:"Todos",gasto:"Gastos",ing:"Ingresos",inv:"Ahorro"};
 
     let h=interno?"":`<section class="card"><div class="sechead"><h2 class="sec">Movimientos del mes</h2>
@@ -2060,6 +2067,10 @@ const App={
       h+=`<div class="empty"><b>Sin ${nombreF[f].toLowerCase()} este mes</b>Cargá uno desde el bloque de arriba.</div>`;
     }else{
       h+=`<div class="movs">`+movs.map(mv=>{
+        if(mv._t==="tras") return `<button type="button" class="mov" data-edit="tras:${mv.id}">
+          <span class="bar" style="background:var(--ink-3)"></span>
+          <span class="txt"><b>${mv.a==="mp"?"Efectivo → Mercado Pago":"Mercado Pago → Efectivo"}</b><span>Movimiento entre tus billeteras${mv.concepto?" · "+esc(mv.concepto):""} · ${esc(fechaCorta(mv.fecha))}</span></span>
+          <span class="amt num" style="color:var(--ink-3)">⇄ ${money(mv.monto)}</span></button>`;
         const c=store.cat(mv.cat);
         const color=mv._t==="gasto"?(c?colorDe(c.color):"var(--c12)"):mv._t==="ing"?"var(--good)":"var(--brand)";
         const sub=mv._t==="gasto"?(c?c.nombre:"Sin categoría")
@@ -3300,7 +3311,7 @@ const App={
       s.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); this.mostrarPorcion(s); } });
     });
     v.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
-      const[t,id]=b.dataset.edit.split(":"); this.editar(t,id);
+      const[t,id]=b.dataset.edit.split(":"); if(t==="tras") this.editarTraspaso(id); else this.editar(t,id);
     });
     v.querySelectorAll("[data-nuevo]").forEach(b=>b.onclick=()=>this.editar(b.dataset.nuevo,null));
     v.querySelectorAll("[data-fmov]").forEach(b=>b.onclick=()=>{this.filtroMov=b.dataset.fmov;this.render();});
@@ -3617,6 +3628,41 @@ Cuando el gasto coincida con una subcategoría de la lista, usá ese nombre EXAC
     dlg.showModal();
     const f=body.querySelector("input,select,textarea"); if(f) setTimeout(()=>f.focus(),60);
     return body;
+  },
+
+  /* mover plata en mano de efectivo a Mercado Pago o al revés: no es gasto ni ingreso,
+     sólo cambia de qué lado está */
+  editarTraspaso(id){
+    const buscar=()=>{ const mm=store.ensureMes(this.mes); mm.traspasos=mm.traspasos||[]; return {m:mm,it:id?mm.traspasos.find(x=>x.id===id):null}; };
+    const it=buscar().it;
+    if(id&&!it) return this.toast("Ese movimiento ya no existe.");
+    const d=it||{monto:0,a:"mp",concepto:"",fecha:(hoyISO().startsWith(this.mes)?hoyISO():this.mes+"-01")};
+    const pm=calc.porMedio(this.mes);
+    const cuerpo=`
+      <p class="hint" style="margin:-4px 0 10px">Tenés en mano: Efectivo <b class="num">${money(pm.efectivo.saldo)}</b> · MP <b class="num">${money(pm.mp.saldo)}</b></p>
+      <label class="f" for="fMonto">Monto
+        <input type="text" id="fMonto" class="num" inputmode="numeric" value="${d.monto?money(d.monto):""}"
+          placeholder="50 lucas / 50000" style="font-size:20px;font-weight:700"></label>
+      <div class="f"><span>Hacia dónde</span>
+        <div class="segs mini" role="tablist" id="fDir">
+          <button type="button" role="tab" data-dir="mp" aria-selected="${d.a==="mp"}">Efectivo → MP</button>
+          <button type="button" role="tab" data-dir="efectivo" aria-selected="${d.a!=="mp"}">MP → Efectivo</button>
+        </div></div>
+      <label class="f" for="fConcepto">Detalle (opcional)
+        <input type="text" id="fConcepto" value="${esc(d.concepto||"")}" placeholder="Me devolvió la mitad de la cena"></label>
+      <label class="f" for="fFecha">Fecha<input type="date" id="fFecha" value="${esc(d.fecha||"")}"></label>`;
+    let a=d.a==="mp"?"mp":"efectivo";
+    const body=this.hoja(it?"Mover plata":"Mover plata",cuerpo,(b)=>{
+      const monto=this.leerMonto($("#fMonto",b).value);
+      if(!(monto>0)){ this.toast("Poné un monto mayor a cero."); return false; }
+      const obj={id:it?it.id:uid(),monto,a,fecha:$("#fFecha",b).value||this.mes+"-01",concepto:$("#fConcepto",b).value.trim()};
+      const f=buscar(); if(f.it) f.m.traspasos.splice(f.m.traspasos.indexOf(f.it),1);
+      const destino=String(obj.fecha).slice(0,7), md=destino===this.mes?f.m:store.ensureMes(destino);
+      md.traspasos=md.traspasos||[]; md.traspasos.push(obj);
+      store.guardarMes(this.mes); if(destino!==this.mes) store.guardarMes(destino);
+      this.render(); this.toast(a==="mp"?`${money(monto)} pasaron de efectivo a Mercado Pago`:`${money(monto)} pasaron de Mercado Pago a efectivo`);
+    }, it?()=>{ const f=buscar(); if(f.it){ f.m.traspasos.splice(f.m.traspasos.indexOf(f.it),1); store.guardarMes(this.mes); this.render(); } }:null);
+    body.querySelectorAll("[data-dir]").forEach(bt=>bt.onclick=()=>{ a=bt.dataset.dir; body.querySelectorAll("[data-dir]").forEach(x=>x.setAttribute("aria-selected",String(x===bt))); });
   },
 
   editar(tipo,id,pre){
