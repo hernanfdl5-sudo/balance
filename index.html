@@ -520,7 +520,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261029-223315 -->
+<!-- build 20261029-223615 -->
 
 <div id="shell">
   <header id="topbar">
@@ -590,7 +590,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261029-223315";
+const BUILD="20261029-223615";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -2500,7 +2500,7 @@ const App={
     const partes=k=>{
       const out={}, m=store.mes(k)||MES_DEF();
       if(sel==="gastos") for(const c of Object.values(calc.porCategoria(k))){ if(c.gastado>0) out[c.cat.nombre]=(out[c.cat.nombre]||0)+c.gastado; }
-      else if(sel==="ingresos") for(const f of calc.porFuente(k)){ const v=Math.max(f.esperado,f.asignado); if(v>0) out[f.nombre]=(out[f.nombre]||0)+v; }
+      else if(sel==="ingresos") for(const f of calc.porFuente(k)){ const v=f.esperado>0?f.esperado:f.monto; if(v>0) out[f.nombre]=(out[f.nombre]||0)+v; }
       else if(sel==="ahorro") for(const i of m.inversiones){ const n=(i.instrumento||"Otro").trim(); out[n]=(out[n]||0)+(Number(i.monto)||0); }
       else { out.Ingresos=calc.ingresoMes(k); out.Gastos=calc.gastado(k); out.Ahorro=calc.invertido(k); }
       return out;
@@ -2694,21 +2694,19 @@ const App={
     const esperado=calc.ingEsperado(key);
     const aviso=(!ing&&!esperado)?`<div class="banner" style="margin-bottom:12px">Todavía no cargaste ingresos en ${mesN.toLowerCase()}. Tocá una fuente para ver el detalle o cargá uno con “+ Ingreso”.</div>`:"";
 
-    const items=fuentes.filter(f=>f.asignado>0).map(f=>({id:null,nombre:f.nombre,monto:f.asignado,color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
-    /* esperado contra retirado: sólo la bolsa del sueldo y demás fuentes esperadas (sin el sobrante ni los extras) */
-    /* la bolsa entera: sueldo, ganancias y el sobrante del mes anterior */
-    const retirado=calc.retirado(key), bolsa=fuentes.reduce((s,f)=>s+f.esperado,0), pooled=fuentes.filter(f=>f.esperado>0).length>1;
+    /* el sueldo del mes es una sola torta: sueldo + ganancias + sobrante anterior (+ extras).
+       Cada fuente es una porción; los retiros se descuentan del total, no de cada porción */
+    const parte=f=>f.esperado>0?f.esperado:f.monto;
+    const total=calc.ingresoMes(key), bolsa=fuentes.reduce((s,f)=>s+f.esperado,0), retirado=calc.retirado(key);
+    const items=fuentes.filter(f=>parte(f)>0).map(f=>({id:null,nombre:f.nombre,monto:parte(f),color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
     let h=aviso+`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
         <span style="display:flex;gap:6px"><button class="btn out sm" data-iresp="1">Esperados</button><button class="btn out sm" id="btnFuentes">Fuentes</button></span></div>
-      ${ing>0?this.donut(items,ing,"Ingresó",money(ing),mesN):""}
+      ${total>0?this.donut(items,total,"Sueldo del mes",money(total),mesN):""}
       ${bolsa>0?this.lineaProyectado("Para retirar",bolsa,"Retirado",retirado,"sin retirar","más de lo que había"):""}
-      ${pooled?(()=>{ const orden=[...store.config.fuentes,calc.FUENTE_SOBRANTE].filter(n=>fuentes.some(f=>f.nombre===n&&f.esperado>0)).map(n=>n===calc.FUENTE_SOBRANTE?"el sobrante del mes anterior":n);
-        const resto=orden.slice(1), lista=resto.length>1?resto.slice(0,-1).join(", ")+" y después "+resto[resto.length-1]:resto[0];
-        return `<p class="hint" style="margin:8px 0 0">Lo que retirás sale de todo junto: primero cuenta como ${esc(orden[0])} y, cuando lo completás, como ${esc(lista)}.</p>`; })():""}
       <div class="catlist" style="margin-top:8px">`
-      + fuentes.map((f,i)=>this.filaFuente(f,i,ing)).join("")
-      + `</div><div class="tot"><span>Total ingresado</span><b class="num" style="color:var(--good-ink)">${money(ing)}</b></div></section>`;
+      + fuentes.map((f,i)=>this.filaFuente(f,i,total)).join("")
+      + `</div><div class="tot"><span>Sueldo del mes</span><b class="num" style="color:var(--good-ink)">${money(total)}</b></div></section>`;
 
     /* la lista completa vive en Mes a mes › Movimientos; acá sólo el acceso rápido */
     h+=`<button class="btn pri full" data-nuevo="ing">+ Cargar ingreso</button>`;
@@ -2719,13 +2717,12 @@ const App={
   /* una fuente de ingreso: barra contra lo esperado y desglose por detalle al tocarla */
   filaFuente(f,i,total){
     const clave="ing:"+f.nombre, abierta=!!this.abiertas[clave], color=f.virtual?"var(--brand)":colorDe(i);
-    /* v = lo que le toca a esta fuente (los retiros se reparten entre las fuentes esperadas) */
-    const v=f.asignado!==undefined?f.asignado:f.monto;
-    const est=estadoTope(v,f.esperado), fill=f.virtual?color:colorEstado(est,color);
-    const p=f.esperado>0?Math.min(v/f.esperado*100,100):(total>0?v/total*100:0);
+    /* v = la porción de esta fuente en el sueldo del mes: lo esperado, o lo que entró si no tiene esperado */
+    const v=f.esperado>0?f.esperado:f.monto, fill=color;
+    const p=total>0?Math.min(v/total*100,100):0;
     if(f.virtual) i=-1; /* color propio para el sobrante */
-    const tag=f.esperado>0?`<span class="metertag tag-${est}">${est==="warn"?`retiraste ${pct(v/f.esperado*100)} · faltan ${money(f.esperado-v)}`:est==="ok"&&v>=f.esperado*0.99?"retirado completo":est==="crit"?`${money(v-f.esperado)} más de lo esperado`:textoEstado(est,v,f.esperado)}</span>${f.virtual?`<span class="metertag tag-none">lo que sobró el mes pasado · se calcula solo</span>`:""}`
-      :`<span class="metertag tag-none">Sin esperado</span>`;
+    const tag=f.virtual?`<span class="metertag tag-none">lo que sobró el mes pasado · se calcula solo</span>`
+      :f.esperado>0?"":`<span class="metertag tag-none">ingreso extra · no estaba esperado</span>`;
     let subs="";
     if(abierta){
       if(f.virtual){
@@ -2745,7 +2742,7 @@ const App={
       <button type="button" class="cathead" data-fuente="${esc(f.nombre)}" aria-expanded="${abierta}">
         <span class="catname"><i class="dot" style="background:${color}"></i><b>${esc(f.nombre)}</b></span>
         <span class="catnums"><span class="a num">${money(v)}</span>
-          <span class="b num">${f.esperado>0?"de "+money(f.esperado):(total>0&&v>0?pct(v/total*100)+" del total":"")}</span></span>
+          <span class="b num">${total>0&&v>0?pct(v/total*100)+" del total":""}</span></span>
       </button>
       <div class="meter"><i style="width:${p}%;background:${fill}"></i></div>${tag}${subs}</div>`;
   },
