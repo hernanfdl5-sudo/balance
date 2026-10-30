@@ -520,7 +520,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261029-224802 -->
+<!-- build 20261029-225801 -->
 
 <div id="shell">
   <header id="topbar">
@@ -590,7 +590,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261029-224802";
+const BUILD="20261029-225801";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -2705,7 +2705,9 @@ const App={
     /* el sueldo del mes es una sola torta: sueldo + ganancias + sobrante anterior (+ extras).
        Cada fuente es una porción; los retiros se descuentan del total, no de cada porción */
     const parte=f=>f.esperado>0?f.esperado:f.monto;
-    const total=calc.ingresoMes(key), bolsa=fuentes.reduce((s,f)=>s+f.esperado,0), retirado=calc.retirado(key);
+    /* "para retirar" y "retirado" cuentan el sobrante anterior en los dos lados: es parte del sueldo del mes y ya lo tenés */
+    const sobA=Math.max(calc.sobrante(key),0);
+    const total=calc.ingresoMes(key), bolsa=fuentes.reduce((s,f)=>s+f.esperado,0)+sobA, retirado=calc.retirado(key)+sobA;
     const items=fuentes.filter(f=>parte(f)>0).map(f=>({id:null,nombre:f.nombre,monto:parte(f),color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
     let h=aviso+`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
