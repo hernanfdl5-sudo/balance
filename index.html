@@ -520,7 +520,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261029-221911 -->
+<!-- build 20261029-223315 -->
 
 <div id="shell">
   <header id="topbar">
@@ -590,7 +590,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261029-221911";
+const BUILD="20261029-223315";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -815,15 +815,16 @@ const calc={
     const prev=keyMas(k,-1); if(!store.mes(prev)) return 0;
     return this.neto(prev);
   },
-  /* lo cobrado hasta ahora (retiros) más el sobrante anterior: la plata en mano */
-  ingresos(k){ const s=this.sobrante(k); return this.ingresosReales(k)+(s>0?s:0); },
+  /* lo cobrado hasta ahora (retiros y otras entradas): la plata en mano. El sobrante del mes
+     anterior no se suma solo: forma parte de la bolsa para retirar, y entra cuando lo retirás */
+  ingresos(k){ return this.ingresosReales(k); },
   /* el ingreso del mes entero: el sueldo esperado (si está cargado) más el sobrante anterior.
      Es lo que usan Real, Proyectado, el cierre del mes y Mes a mes. */
   /* fuente por fuente: lo esperado si está cargado (o lo cobrado, si fue más), y las fuentes sin
      esperado (una plata que te devolvieron, una changa) suman lo que entró. */
   ingresoMes(k){ return this.ingEstimado(k); },
   /* lo que falta retirar del sueldo: por fuente, lo esperado menos lo cobrado */
-  sinRetirar(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?0:Math.max(f.esperado-f.asignado,0)),0); },
+  sinRetirar(k){ return this.porFuente(k).reduce((s,f)=>s+Math.max(f.esperado-f.asignado,0),0); },
   /* dónde está la plata: en efectivo o en Mercado Pago. Los movimientos sin medio son efectivo;
      el sobrante del mes anterior también. */
   porMedio(k){
@@ -835,7 +836,6 @@ const calc={
       /* traspasos: plata que cambia de lado sin ser gasto ni ingreso */
       for(const t of (m.traspasos||[])){ const v=Number(t.monto)||0; if(t.a==="mp"){ r.mp.tras+=v; r.efectivo.tras-=v; } else { r.efectivo.tras+=v; r.mp.tras-=v; } }
     }
-    const s=this.sobrante(k); if(s>0) r.efectivo.ing+=s;
     r.usaMp=r.mp.ing>0||r.mp.gas>0||r.mp.inv>0||r.mp.tras!==0;
     r.efectivo.saldo=r.efectivo.ing-r.efectivo.gas-r.efectivo.inv+r.efectivo.tras; r.mp.saldo=r.mp.ing-r.mp.gas-r.mp.inv+r.mp.tras;
     return r;
@@ -894,7 +894,7 @@ const calc={
     }
     /* ingresos esperados que todavía no entraron (o entraron de menos) */
     for(const f of this.porFuente(key)){
-      if(!(f.esperado>0)) continue;
+      if(!(f.esperado>0)||f.virtual) continue;
       const fila={cat:{nombre:"Ingreso",color:0},ing:true,nombre:f.nombre,tope:f.esperado,gastado:f.asignado};
       if(f.asignado<f.esperado*0.99) conSaldo.push(fila);
     }
@@ -1004,7 +1004,7 @@ const calc={
   ingEsperadoDe(mes,f){ return Number(((mes||{}).presupuestosIng||{})[f])||0; },
   ingEsperado(k){ const m=store.mes(k); if(!m) return 0; return Object.values(m.presupuestosIng||{}).reduce((s,v)=>s+(Number(v)||0),0); },
   /* ingreso estimado: por fuente, lo mayor entre lo esperado y lo ya cobrado */
-  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?f.monto:Math.max(f.esperado,f.asignado)),0); },
+  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+Math.max(f.esperado,f.asignado),0); },
 
   porFuente(key){
     const m=store.mes(key); const acc={};
@@ -1017,14 +1017,15 @@ const calc={
     }
     const sob=this.sobrante(key);
     if(sob>0){
+      /* el sobrante del mes anterior es una fuente más para retirar: su "esperado" es lo que sobró */
       const prev=keyMas(key,-1), nom="Sobrante de "+MESES[Number(prev.split("-")[1])-1].toLowerCase();
-      acc[this.FUENTE_SOBRANTE]={nombre:this.FUENTE_SOBRANTE,monto:sob,esperado:0,virtual:true,conceptos:{[nom]:sob}};
+      acc[this.FUENTE_SOBRANTE]={nombre:this.FUENTE_SOBRANTE,monto:0,esperado:sob,virtual:true,conceptos:{[nom]:sob}};
     }
-    /* Los retiros salen de una sola bolsa: todo lo esperado (Sueldo + Ganancias…). Lo retirado se
-       reparte en orden: primero llena Sueldo, lo que pasa va a la siguiente fuente. Así, retirar
-       más que el sueldo no es "excederse": es que ya estás usando las ganancias. "asignado" es
-       lo que le toca a cada fuente; "monto" sigue siendo lo que se cargó con su nombre. */
-    const conEsp=[...store.config.fuentes,...Object.keys(acc)].filter((f,i,a)=>a.indexOf(f)===i&&acc[f]&&acc[f].esperado>0&&!acc[f].virtual);
+    /* Los retiros salen de una sola bolsa: todo lo esperado (Sueldo + Ganancias + sobrante anterior).
+       Lo retirado se reparte en orden: primero llena Sueldo, lo que pasa va a la siguiente fuente y
+       al final al sobrante. Así, retirar más que el sueldo no es "excederse": es que ya estás usando
+       lo demás. "asignado" es lo que le toca a cada fuente; "monto" es lo que se cargó con su nombre. */
+    const conEsp=[...store.config.fuentes,...Object.keys(acc)].filter((f,i,a)=>a.indexOf(f)===i&&acc[f]&&acc[f].esperado>0);
     let resto=conEsp.reduce((s,f)=>s+acc[f].monto,0);
     conEsp.forEach((f,i)=>{ const ultima=i===conEsp.length-1; const a=ultima?resto:Math.min(resto,acc[f].esperado); acc[f].asignado=a; resto-=a; });
     for(const f in acc) if(acc[f].asignado===undefined) acc[f].asignado=acc[f].monto;
@@ -1036,7 +1037,7 @@ const calc={
       .sort((a,b)=>(b.asignado-a.asignado)||(b.esperado-a.esperado));
   },
   /* lo retirado de la bolsa de lo esperado, y lo esperado en total */
-  retirado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.esperado>0&&!f.virtual?f.monto:0),0); },
+  retirado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.esperado>0?f.monto:0),0); },
 
   ahorroAcumulado(){return Object.keys(store.meses).reduce((s,k)=>s+this.invertido(k),0);},
   porInstrumento(){
@@ -2499,7 +2500,7 @@ const App={
     const partes=k=>{
       const out={}, m=store.mes(k)||MES_DEF();
       if(sel==="gastos") for(const c of Object.values(calc.porCategoria(k))){ if(c.gastado>0) out[c.cat.nombre]=(out[c.cat.nombre]||0)+c.gastado; }
-      else if(sel==="ingresos") for(const f of calc.porFuente(k)){ const v=f.virtual?f.monto:(f.esperado>0?f.esperado:f.monto); if(v>0) out[f.nombre]=(out[f.nombre]||0)+v; }
+      else if(sel==="ingresos") for(const f of calc.porFuente(k)){ const v=Math.max(f.esperado,f.asignado); if(v>0) out[f.nombre]=(out[f.nombre]||0)+v; }
       else if(sel==="ahorro") for(const i of m.inversiones){ const n=(i.instrumento||"Otro").trim(); out[n]=(out[n]||0)+(Number(i.monto)||0); }
       else { out.Ingresos=calc.ingresoMes(k); out.Gastos=calc.gastado(k); out.Ahorro=calc.invertido(k); }
       return out;
@@ -2695,13 +2696,16 @@ const App={
 
     const items=fuentes.filter(f=>f.asignado>0).map(f=>({id:null,nombre:f.nombre,monto:f.asignado,color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
     /* esperado contra retirado: sólo la bolsa del sueldo y demás fuentes esperadas (sin el sobrante ni los extras) */
-    const retirado=calc.retirado(key), pooled=fuentes.filter(f=>f.esperado>0&&!f.virtual).length>1;
+    /* la bolsa entera: sueldo, ganancias y el sobrante del mes anterior */
+    const retirado=calc.retirado(key), bolsa=fuentes.reduce((s,f)=>s+f.esperado,0), pooled=fuentes.filter(f=>f.esperado>0).length>1;
     let h=aviso+`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
         <span style="display:flex;gap:6px"><button class="btn out sm" data-iresp="1">Esperados</button><button class="btn out sm" id="btnFuentes">Fuentes</button></span></div>
       ${ing>0?this.donut(items,ing,"Ingresó",money(ing),mesN):""}
-      ${esperado>0?this.lineaProyectado("Esperado",esperado,"Retirado",retirado,"sin retirar","más de lo esperado"):""}
-      ${pooled?`<p class="hint" style="margin:8px 0 0">Lo que retirás sale de todo lo esperado junto: primero cuenta como ${esc(fuentes.filter(f=>f.esperado>0&&!f.virtual)[0].nombre)} y, cuando lo completás, como ${esc(fuentes.filter(f=>f.esperado>0&&!f.virtual).slice(1).map(f=>f.nombre).join(", "))}.</p>`:""}
+      ${bolsa>0?this.lineaProyectado("Para retirar",bolsa,"Retirado",retirado,"sin retirar","más de lo que había"):""}
+      ${pooled?(()=>{ const orden=[...store.config.fuentes,calc.FUENTE_SOBRANTE].filter(n=>fuentes.some(f=>f.nombre===n&&f.esperado>0)).map(n=>n===calc.FUENTE_SOBRANTE?"el sobrante del mes anterior":n);
+        const resto=orden.slice(1), lista=resto.length>1?resto.slice(0,-1).join(", ")+" y después "+resto[resto.length-1]:resto[0];
+        return `<p class="hint" style="margin:8px 0 0">Lo que retirás sale de todo junto: primero cuenta como ${esc(orden[0])} y, cuando lo completás, como ${esc(lista)}.</p>`; })():""}
       <div class="catlist" style="margin-top:8px">`
       + fuentes.map((f,i)=>this.filaFuente(f,i,ing)).join("")
       + `</div><div class="tot"><span>Total ingresado</span><b class="num" style="color:var(--good-ink)">${money(ing)}</b></div></section>`;
@@ -2720,8 +2724,7 @@ const App={
     const est=estadoTope(v,f.esperado), fill=f.virtual?color:colorEstado(est,color);
     const p=f.esperado>0?Math.min(v/f.esperado*100,100):(total>0?v/total*100:0);
     if(f.virtual) i=-1; /* color propio para el sobrante */
-    const tag=f.virtual?`<span class="metertag tag-ok">lo que sobró el mes pasado · se calcula solo</span>`
-      :f.esperado>0?`<span class="metertag tag-${est}">${est==="warn"?`retiraste ${pct(v/f.esperado*100)} · faltan ${money(f.esperado-v)}`:est==="ok"&&v>=f.esperado*0.99?"retirado completo":est==="crit"?`${money(v-f.esperado)} más de lo esperado`:textoEstado(est,v,f.esperado)}</span>`
+    const tag=f.esperado>0?`<span class="metertag tag-${est}">${est==="warn"?`retiraste ${pct(v/f.esperado*100)} · faltan ${money(f.esperado-v)}`:est==="ok"&&v>=f.esperado*0.99?"retirado completo":est==="crit"?`${money(v-f.esperado)} más de lo esperado`:textoEstado(est,v,f.esperado)}</span>${f.virtual?`<span class="metertag tag-none">lo que sobró el mes pasado · se calcula solo</span>`:""}`
       :`<span class="metertag tag-none">Sin esperado</span>`;
     let subs="";
     if(abierta){
