@@ -520,7 +520,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261029-223820 -->
+<!-- build 20261029-224802 -->
 
 <div id="shell">
   <header id="topbar">
@@ -590,7 +590,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261029-223820";
+const BUILD="20261029-224802";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -1006,7 +1006,11 @@ const calc={
   ingEsperadoDe(mes,f){ return Number(((mes||{}).presupuestosIng||{})[f])||0; },
   ingEsperado(k){ const m=store.mes(k); if(!m) return 0; return Object.values(m.presupuestosIng||{}).reduce((s,v)=>s+(Number(v)||0),0); },
   /* ingreso estimado: por fuente, lo mayor entre lo esperado y lo ya cobrado */
-  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+Math.max(f.esperado,f.asignado),0); },
+  /* el sueldo del mes: lo esperado de cada fuente (sueldo, ganancias), más el sobrante anterior
+     y los ingresos extra sin esperado. Retirar de más no lo agranda: eso se avisa aparte. */
+  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.esperado>0?f.esperado:f.monto),0); },
+  /* lo retirado por encima de lo esperado (sueldo + ganancias) */
+  retiradoDeMas(k){ const e=this.porFuente(k).reduce((s,f)=>s+f.esperado,0); return e>0?Math.max(this.retirado(k)-e,0):0; },
 
   porFuente(key){
     const m=store.mes(key); const acc={};
@@ -2133,8 +2137,10 @@ const App={
         const partes=`<span>Efectivo <b class="num ${pm.efectivo.saldo<0?"loss":""}">${money(pm.efectivo.saldo)}</b></span><span class="sep">·</span><span>MP <b class="num ${pm.mp.saldo<0?"loss":""}">${money(pm.mp.saldo)}</b></span>`;
         if(mano) return `<div class="desglose">${partes}</div>`;
         /* en Real, el desglose de siempre: en mano + sin retirar (la partición efectivo/MP va sólo en En mano) */
-        const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=calc.sinRetirar(key);
-        return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span><span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span></div>`; })()}
+        const enMano=calc.ingresos(key)-calc.gastado(key)-inv, sinRet=calc.sinRetirar(key), deMas=calc.retiradoDeMas(key);
+        return `<div class="desglose"><span><b class="num ${enMano<0?"loss":""}">${money(enMano)}</b> en mano</span>${deMas>0.5
+          ?`<span class="sep">·</span><span class="loss"><b class="num loss">${money(deMas)}</b> retirados de más</span>`
+          :`<span class="sep">+</span><span><b class="num">${money(sinRet)}</b> sin retirar</span>`}</div>`; })()}
       ${mano?"":`<div class="sub">${proy
         ? (sinTopes?`Todavía no pusiste topes en ${mesN}`:`Tu sueldo del mes menos tus topes, lo que ya te pasaste y lo ahorrado${sob>0?", con el sobrante anterior":""}`)
         : `Tu sueldo del mes menos gastos y ahorro${notaSob}`}</div>`}
