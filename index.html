@@ -520,7 +520,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261012-114622 -->
+<!-- build 20261029-221911 -->
 
 <div id="shell">
   <header id="topbar">
@@ -590,7 +590,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261012-114622";
+const BUILD="20261029-221911";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -823,7 +823,7 @@ const calc={
      esperado (una plata que te devolvieron, una changa) suman lo que entró. */
   ingresoMes(k){ return this.ingEstimado(k); },
   /* lo que falta retirar del sueldo: por fuente, lo esperado menos lo cobrado */
-  sinRetirar(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?0:Math.max(f.esperado-f.monto,0)),0); },
+  sinRetirar(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?0:Math.max(f.esperado-f.asignado,0)),0); },
   /* dónde está la plata: en efectivo o en Mercado Pago. Los movimientos sin medio son efectivo;
      el sobrante del mes anterior también. */
   porMedio(k){
@@ -895,8 +895,8 @@ const calc={
     /* ingresos esperados que todavía no entraron (o entraron de menos) */
     for(const f of this.porFuente(key)){
       if(!(f.esperado>0)) continue;
-      const fila={cat:{nombre:"Ingreso",color:0},ing:true,nombre:f.nombre,tope:f.esperado,gastado:f.monto};
-      if(f.monto<f.esperado*0.99) conSaldo.push(fila);
+      const fila={cat:{nombre:"Ingreso",color:0},ing:true,nombre:f.nombre,tope:f.esperado,gastado:f.asignado};
+      if(f.asignado<f.esperado*0.99) conSaldo.push(fila);
     }
     sinCargar.sort((a,b)=>(a.vence-b.vence)||String(a.nombre||a.cat.nombre).localeCompare(String(b.nombre||b.cat.nombre)));
     conSaldo.sort((a,b)=>(b.tope-b.gastado)-(a.tope-a.gastado));
@@ -1004,7 +1004,7 @@ const calc={
   ingEsperadoDe(mes,f){ return Number(((mes||{}).presupuestosIng||{})[f])||0; },
   ingEsperado(k){ const m=store.mes(k); if(!m) return 0; return Object.values(m.presupuestosIng||{}).reduce((s,v)=>s+(Number(v)||0),0); },
   /* ingreso estimado: por fuente, lo mayor entre lo esperado y lo ya cobrado */
-  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?f.monto:Math.max(f.esperado,f.monto)),0); },
+  ingEstimado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.virtual?f.monto:Math.max(f.esperado,f.asignado)),0); },
 
   porFuente(key){
     const m=store.mes(key); const acc={};
@@ -1020,13 +1020,23 @@ const calc={
       const prev=keyMas(key,-1), nom="Sobrante de "+MESES[Number(prev.split("-")[1])-1].toLowerCase();
       acc[this.FUENTE_SOBRANTE]={nombre:this.FUENTE_SOBRANTE,monto:sob,esperado:0,virtual:true,conceptos:{[nom]:sob}};
     }
+    /* Los retiros salen de una sola bolsa: todo lo esperado (Sueldo + Ganancias…). Lo retirado se
+       reparte en orden: primero llena Sueldo, lo que pasa va a la siguiente fuente. Así, retirar
+       más que el sueldo no es "excederse": es que ya estás usando las ganancias. "asignado" es
+       lo que le toca a cada fuente; "monto" sigue siendo lo que se cargó con su nombre. */
+    const conEsp=[...store.config.fuentes,...Object.keys(acc)].filter((f,i,a)=>a.indexOf(f)===i&&acc[f]&&acc[f].esperado>0&&!acc[f].virtual);
+    let resto=conEsp.reduce((s,f)=>s+acc[f].monto,0);
+    conEsp.forEach((f,i)=>{ const ultima=i===conEsp.length-1; const a=ultima?resto:Math.min(resto,acc[f].esperado); acc[f].asignado=a; resto-=a; });
+    for(const f in acc) if(acc[f].asignado===undefined) acc[f].asignado=acc[f].monto;
     /* las fuentes configuradas (Sueldo, Ganancias…) aparecen siempre, aunque estén en cero */
     const fijas=new Set(store.config.fuentes);
     return Object.values(acc)
       .map(f=>({...f,lista:Object.entries(f.conceptos).map(([nombre,monto])=>({nombre,monto})).sort((a,b)=>b.monto-a.monto)}))
       .filter(x=>fijas.has(x.nombre)||x.monto>0||x.esperado>0)
-      .sort((a,b)=>(b.monto-a.monto)||(b.esperado-a.esperado));
+      .sort((a,b)=>(b.asignado-a.asignado)||(b.esperado-a.esperado));
   },
+  /* lo retirado de la bolsa de lo esperado, y lo esperado en total */
+  retirado(k){ return this.porFuente(k).reduce((s,f)=>s+(f.esperado>0&&!f.virtual?f.monto:0),0); },
 
   ahorroAcumulado(){return Object.keys(store.meses).reduce((s,k)=>s+this.invertido(k),0);},
   porInstrumento(){
@@ -2683,12 +2693,15 @@ const App={
     const esperado=calc.ingEsperado(key);
     const aviso=(!ing&&!esperado)?`<div class="banner" style="margin-bottom:12px">Todavía no cargaste ingresos en ${mesN.toLowerCase()}. Tocá una fuente para ver el detalle o cargá uno con “+ Ingreso”.</div>`:"";
 
-    const items=fuentes.filter(f=>f.monto>0).map(f=>({id:null,nombre:f.nombre,monto:f.monto,color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
+    const items=fuentes.filter(f=>f.asignado>0).map(f=>({id:null,nombre:f.nombre,monto:f.asignado,color:f.virtual?"var(--brand)":colorDe(fuentes.indexOf(f))}));
+    /* esperado contra retirado: sólo la bolsa del sueldo y demás fuentes esperadas (sin el sobrante ni los extras) */
+    const retirado=calc.retirado(key), pooled=fuentes.filter(f=>f.esperado>0&&!f.virtual).length>1;
     let h=aviso+`<section class="card">
       <div class="sechead"><h2 class="sec">De dónde vino</h2>
         <span style="display:flex;gap:6px"><button class="btn out sm" data-iresp="1">Esperados</button><button class="btn out sm" id="btnFuentes">Fuentes</button></span></div>
       ${ing>0?this.donut(items,ing,"Ingresó",money(ing),mesN):""}
-      ${esperado>0?this.lineaProyectado("Esperado",esperado,"Cobrado",ing,"por debajo de lo esperado","por encima de lo esperado"):""}
+      ${esperado>0?this.lineaProyectado("Esperado",esperado,"Retirado",retirado,"sin retirar","más de lo esperado"):""}
+      ${pooled?`<p class="hint" style="margin:8px 0 0">Lo que retirás sale de todo lo esperado junto: primero cuenta como ${esc(fuentes.filter(f=>f.esperado>0&&!f.virtual)[0].nombre)} y, cuando lo completás, como ${esc(fuentes.filter(f=>f.esperado>0&&!f.virtual).slice(1).map(f=>f.nombre).join(", "))}.</p>`:""}
       <div class="catlist" style="margin-top:8px">`
       + fuentes.map((f,i)=>this.filaFuente(f,i,ing)).join("")
       + `</div><div class="tot"><span>Total ingresado</span><b class="num" style="color:var(--good-ink)">${money(ing)}</b></div></section>`;
@@ -2702,11 +2715,13 @@ const App={
   /* una fuente de ingreso: barra contra lo esperado y desglose por detalle al tocarla */
   filaFuente(f,i,total){
     const clave="ing:"+f.nombre, abierta=!!this.abiertas[clave], color=f.virtual?"var(--brand)":colorDe(i);
-    const est=estadoTope(f.monto,f.esperado), fill=f.virtual?color:colorEstado(est,color);
-    const p=f.esperado>0?Math.min(f.monto/f.esperado*100,100):(total>0?f.monto/total*100:0);
+    /* v = lo que le toca a esta fuente (los retiros se reparten entre las fuentes esperadas) */
+    const v=f.asignado!==undefined?f.asignado:f.monto;
+    const est=estadoTope(v,f.esperado), fill=f.virtual?color:colorEstado(est,color);
+    const p=f.esperado>0?Math.min(v/f.esperado*100,100):(total>0?v/total*100:0);
     if(f.virtual) i=-1; /* color propio para el sobrante */
     const tag=f.virtual?`<span class="metertag tag-ok">lo que sobró el mes pasado · se calcula solo</span>`
-      :f.esperado>0?`<span class="metertag tag-${est}">${est==="warn"?`cobraste ${pct(f.monto/f.esperado*100)} · faltan ${money(f.esperado-f.monto)}`:textoEstado(est,f.monto,f.esperado)}</span>`
+      :f.esperado>0?`<span class="metertag tag-${est}">${est==="warn"?`retiraste ${pct(v/f.esperado*100)} · faltan ${money(f.esperado-v)}`:est==="ok"&&v>=f.esperado*0.99?"retirado completo":est==="crit"?`${money(v-f.esperado)} más de lo esperado`:textoEstado(est,v,f.esperado)}</span>`
       :`<span class="metertag tag-none">Sin esperado</span>`;
     let subs="";
     if(abierta){
@@ -2726,8 +2741,8 @@ const App={
     return `<div class="catrow ${abierta?"open":""}">
       <button type="button" class="cathead" data-fuente="${esc(f.nombre)}" aria-expanded="${abierta}">
         <span class="catname"><i class="dot" style="background:${color}"></i><b>${esc(f.nombre)}</b></span>
-        <span class="catnums"><span class="a num">${money(f.monto)}</span>
-          <span class="b num">${f.esperado>0?"de "+money(f.esperado):(total>0&&f.monto>0?pct(f.monto/total*100)+" del total":"")}</span></span>
+        <span class="catnums"><span class="a num">${money(v)}</span>
+          <span class="b num">${f.esperado>0?"de "+money(f.esperado):(total>0&&v>0?pct(v/total*100)+" del total":"")}</span></span>
       </button>
       <div class="meter"><i style="width:${p}%;background:${fill}"></i></div>${tag}${subs}</div>`;
   },
