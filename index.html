@@ -520,7 +520,7 @@ details.set>.body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:
 </style>
 </head>
 <body>
-<!-- build 20261029-225801 -->
+<!-- build 20261106-092414 -->
 
 <div id="shell">
   <header id="topbar">
@@ -590,7 +590,7 @@ function guardarTema(t){ try{ localStorage.setItem("bp_tema",t); }catch(e){} apl
 aplicarTema(temaGuardado());
 
 /* sello de la versión publicada: el script de armado reemplaza __BUILD__ por la fecha y hora */
-const BUILD="20261029-225801";
+const BUILD="20261106-092414";
 function versionApp(){
   const m=/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(BUILD);
   return m?`${Number(m[3])} ${MESES_CORTO[Number(m[2])-1]} ${m[1]} · ${m[4]}:${m[5]}`:"de prueba";
@@ -836,8 +836,14 @@ const calc={
       /* traspasos: plata que cambia de lado sin ser gasto ni ingreso */
       for(const t of (m.traspasos||[])){ const v=Number(t.monto)||0; if(t.a==="mp"){ r.mp.tras+=v; r.efectivo.tras-=v; } else { r.efectivo.tras+=v; r.mp.tras-=v; } }
     }
-    /* el sobrante del mes anterior ya está en mano, en efectivo */
-    const s=this.sobrante(k); if(s>0) r.efectivo.ing+=s;
+    /* el sobrante del mes anterior ya está en mano: pasa a cada lado según dónde estaba al cerrar
+       ese mes (lo que había en Mercado Pago sigue en MP; el resto, en efectivo) */
+    const s=this.sobrante(k);
+    if(s>0){
+      const ant=this.porMedio(keyMas(k,-1));
+      const enMp=Math.min(Math.max(ant.mp.saldo,0),s);
+      r.mp.ing+=enMp; r.efectivo.ing+=s-enMp;
+    }
     r.usaMp=r.mp.ing>0||r.mp.gas>0||r.mp.inv>0||r.mp.tras!==0;
     r.efectivo.saldo=r.efectivo.ing-r.efectivo.gas-r.efectivo.inv+r.efectivo.tras; r.mp.saldo=r.mp.ing-r.mp.gas-r.mp.inv+r.mp.tras;
     return r;
